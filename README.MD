@@ -76,7 +76,7 @@ Docker image by [@sgehrman](https://github.com/sgehrman) can be found
 1\. Clone the repository.
 
 ```
-git clone https://github.com/stellar-expert/operations-notifier
+git clone https://github.com/Montelibero/operations-notifier
 ```
 
 2\. Install required NPM packages.
@@ -265,7 +265,7 @@ by notification
 - **asset_code** [*string*] (optional) - asset code to track (specify XLM and no
 issuer to track operations involving XLM)
 - **asset_issuer** [*string*] (optional) - asset issuer to track
-- **operation_types** [*Array\<Number\>*] (optional) - operation types to track
+- **operation_types** [*Array\<Number\>*] (optional) - operation types to track you can fint number https://developers.stellar.org/docs/data/analytics/hubble/data-catalog/data-dictionary/bronze/history-operations 
 
 Note: at least one operation filtering criteria should be specified.
 
@@ -394,25 +394,4 @@ Run all tests (currently almost non existent) with
 npm run test
 ```
 
-## Roadmap and Further Improvements
 
-The following features will be added in the nearest future:
-
-- [x] The ability to use environment variables instead of the configuration file.
-- [x] Response validation for the flooding attacks prevention.
-- [ ] Implement other notification channels: email, messengers, etc.
-- [ ] Multi-account support and basic acquiring to turn the service into a SAAS
-platform, so anyone could offer public SAAS notification services for some fee.
-- [ ] Comprehensive comments and test suites.
-- [ ] Bulletproof errors processing and graceful SIGTERM handling.
-
-Have a suggestion? Want to submit a bug or feature request? Visit the 
-[issue tracker](https://github.com/stellar-expert/operations-notifier/issues).
-
-## Special Thanks and Acknowledgements
-
-- Many thanks to [@MikeFair](https://github.com/MikeFair) for his prominent ideas.
-- To [@sgehrman](https://github.com/sgehrman) for Docker setup and bug reports.
-- Kudos to [Stellar Developer Foundation](https://github.com/stellar) for the
-state-of-the-art software and contemporary approach.
-- And, as always, thanks to awesome Stellar Community for the support.
