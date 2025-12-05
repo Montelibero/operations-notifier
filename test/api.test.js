@@ -5,6 +5,7 @@ const { Keypair } = require('@stellar/stellar-sdk')
 const storage = require('../logic/storage')
 const { encodeUrlParams } = require('../util/url-encoder')
 const roles = require('../models/user/roles')
+const observer = require('../logic/observer')
 
 
 describe('API', function () {
@@ -30,13 +31,18 @@ describe('API', function () {
         })
     })
 
-    after(async function () {
+    after(function (done) {
+        this.timeout(20000)
         config.authorization = false
-        await Promise.all([
+        Promise.all([
             storage.provider.userProvider.deleteAllUsers(),
             storage.provider.removeAllSubscriptions()
-        ])
-        server.shutdown()
+        ]).then(() => {
+            server.close(() => {
+                observer.stop()
+                storage.finalize().then(() => done())
+            })
+        })
     })
 
     describe('Subscriptions', () => {
