@@ -3,22 +3,6 @@ const {horizon} = require('./stellar-connector'),
     {matches} = require('../util/subscription-match-helper'),
     storage = require('./storage')
 
-const transactionsBatchSize = 200
-
-function fetchTransactions(cursor, ledgerSequence = undefined) {
-    let builder = horizon
-        .transactions()
-    if (ledgerSequence !== undefined) {
-        builder = builder.forLedger(ledgerSequence)
-    }
-    if (cursor !== undefined) {
-        builder = builder.cursor(cursor)
-    }
-    return builder
-        .order('asc')
-        .limit(transactionsBatchSize)
-        .call()
-}
 
 /**
  * Tracks transactions using event streaming from Horizon server
@@ -122,23 +106,7 @@ class TransactionWatcher {
      */
     trackTransactions() {
         if (!this.observer.observing) return // redundant check
-        if (!this.cursor || this.cursor === '0') return this.trackLiveStream()
-
-        //check previously set cursor
-        fetchTransactions(this.cursor)
-            .then(({records}) => {
-                if (!records || !records.length) {
-                    this.trackLiveStream()
-                } else {
-                    this.enqueue(records)
-                    setImmediate(() => this.trackTransactions())
-                }
-            })
-            .catch(err => {
-                console.error(err)
-                this.stopWatching() //TODO: add bulletproof error handling with resume on error
-            })
-
+        this.trackLiveStream()
     }
 
     /**
@@ -147,33 +115,35 @@ class TransactionWatcher {
     trackLiveStream() {
         //subscribe to transactions live stream
         this.releaseStream = horizon
-            .ledgers()
+            .transactions()
             .order('asc')
-            .cursor('now')
+            .cursor(this.cursor || 'now')
             .stream({
-                onmessage: (rawLedger) => {
-                    this.loadLedgerTransactions(rawLedger.sequence)
-                    //this.enqueue([rawTx])
+                onmessage: rawTx => {
+                    this.reconnectDelay = undefined
+                    this.enqueue([rawTx])
+                },
+                onerror: err => {
+                    this.stopWatching()
+                    if (err.response && err.response.status === 429) {
+                        const retryAfter = (parseInt(err.response.headers['x-ratelimit-reset']) || 10) * 1000
+                        console.log(`Horizon rate limit reached. Resuming in ${retryAfter / 1000} seconds.`)
+                        this.reconnectDelay = retryAfter
+                    }
+                    else {
+                        //initiate reconnection sequence with exponential backoff
+                        if (this.reconnectDelay) {
+                            this.reconnectDelay *= 2
+                        } else {
+                            this.reconnectDelay = 1000
+                        }
+                        if (this.reconnectDelay > 60000) {
+                            this.reconnectDelay = 60000
+                        }
+                    }
+                    setTimeout(() => this.watch(), this.reconnectDelay)
                 }
             })
-    }
-
-    loadLedgerTransactions(sequence, txCursor) {
-        return new Promise((resolve, reject) => {
-            const fetchLedgerTxBatch = () => {
-                fetchTransactions(txCursor, sequence)
-                    .then(({records}) => {
-                        if (!records || !records.length) return resolve()
-                        this.enqueue(records)
-                        const fetchedCount = records.length
-                        if (fetchedCount < transactionsBatchSize) return resolve() //saves one call when we are sure that we fetched the last batch
-                        fetchLedgerTxBatch(records[fetchedCount - 1].paging_token)
-                    })
-                    .catch(e => reject(e))
-            }
-            fetchLedgerTxBatch(txCursor)
-        })
-
     }
 
     /**
