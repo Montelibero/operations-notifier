@@ -1,4 +1,4 @@
-const {StrKey} = require('stellar-sdk'),
+const {StrKey} = require('@stellar/stellar-sdk'),
     BigNumber = require('bignumber.js'),
     {parseAsset} = require('../util/asset-helper'),
     errors = require('../util/errors')

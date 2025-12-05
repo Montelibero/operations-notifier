@@ -1,4 +1,4 @@
-const {Keypair} = require('stellar-sdk'),
+const {Keypair} = require('@stellar/stellar-sdk'),
     config = require('../models/config')
 
 function processSigningData(dataToSign) {

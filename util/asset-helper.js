@@ -1,4 +1,4 @@
-const {StrKey} = require('stellar-sdk')
+const {StrKey} = require('@stellar/stellar-sdk')
 
 /**
  * Parse asset from an arbitrary object.

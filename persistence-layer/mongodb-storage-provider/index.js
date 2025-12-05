@@ -4,7 +4,6 @@ const StorageProvider = require('../storage-provider'),
     {ObjectId} = mongoose.Types
 
 mongoose.connection.on('error', e => console.error(e))
-mongoose.connection.on('disconnected', () => setTimeout(() => connect(), 1000))
 
 let connectionInitialized = false,
     Subscription,
@@ -22,7 +21,6 @@ class MongoDBStorageProvider extends StorageProvider {
     init(config) {
         if (connectionInitialized) return Promise.resolve()
         return mongoose.connect(config.storageConnectionString, {
-            keepAlive: 1
         }).then(() => {
 
             connectionInitialized = true
