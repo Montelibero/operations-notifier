@@ -1,6 +1,7 @@
 const pkgInfo = require('../package'),
     {signer} = require('../util/signer'),
     observer = require('../logic/observer'),
+    storage = require('../logic/storage'),
     {elapsed} = require('../util/elapsed-time'),
     auth = require('./authorization-handler'),
     roles = require('../models/user/roles')
@@ -33,11 +34,30 @@ function getUserPubKey(req) {
 
 module.exports = function (app) {
     //get application status
-    app.get('/api/status', (req, res) => res.json({
-        version: pkgInfo.version,
-        uptime: elapsed(new Date(), started),
-        publicKey: signer.getPublicKey()
-    }))
+    app.get('/api/status', (req, res) => {
+        Promise.all([
+            observer.loadSubscriptions(),
+            storage.getLastIngestedTx()
+        ])
+            .then(([subscriptions, lastIngestedTx]) => res.json({
+                version: pkgInfo.version,
+                uptime: elapsed(new Date(), started),
+                publicKey: signer.getPublicKey(),
+                observing: observer.observing,
+                subscriptions: subscriptions ? subscriptions.length : 0,
+                lastIngestedTx,
+                stream: observer.transactionWatcher && observer.transactionWatcher.getStatus
+                    ? observer.transactionWatcher.getStatus()
+                    : null,
+                notifier: observer.notifier && observer.notifier.getStatus
+                    ? observer.notifier.getStatus()
+                    : null
+            }))
+            .catch(e => {
+                console.error(e)
+                res.status(500).end()
+            })
+    })
 
     //get all subscriptions for current user
     app.get('/api/subscription', auth.userRequiredMiddleware, (req, res) => {

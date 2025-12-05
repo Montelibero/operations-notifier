@@ -50,9 +50,9 @@ you own hosted Horizon instance. The latter option is preferable for production
 setups. Nevertheless, public Horizon instances supported by SDF and other
 community members work just fine as well.
 
-#### NodeJS 8.6.0+
+#### NodeJS 20+
 
-The service requires NodeJS 8.6.0 or later. 
+The service requires NodeJS 20 or later.
 
 #### (Optional) MongoDB 3.2+ or other storage provider
 
@@ -203,6 +203,18 @@ a ed25519 public key and `signature` is a cryptographic signature of urlencoded
 request params serialized in hex format. Please note, that all requests to 
 API endpoints should contain `nonce` param and the value should be greater than
 in previous request.
+
+### Status
+
+- `GET /api/status` — lightweight health/info endpoint. Returns JSON with:
+  - `version` — service version.
+  - `uptime` — human-readable uptime.
+  - `publicKey` — signer public key.
+  - `observing` — whether the observer is running.
+  - `subscriptions` — active subscription count.
+  - `lastIngestedTx` — paging token of the last processed transaction.
+  - `stream` — stream status (last ledger, last tx hash/paging token, queue length, reconnect delay).
+  - `notifier` — notifier status (in-flight notifications).
 
 ##### Example
 
@@ -393,5 +405,3 @@ Run all tests (currently almost non existent) with
 ```
 npm run test
 ```
-
-

@@ -12,6 +12,10 @@ class TransactionWatcher {
         this.queue = []
         this.processing = false
         this.observer = observer
+        this.lastLedger = null
+        this.lastTxPagingToken = null
+        this.lastTxHash = null
+        this.streaming = false
     }
 
     /**
@@ -114,6 +118,7 @@ class TransactionWatcher {
      */
     trackLiveStream() {
         //subscribe to transactions live stream
+        this.streaming = true
         this.releaseStream = horizon
             .transactions()
             .order('asc')
@@ -121,6 +126,9 @@ class TransactionWatcher {
             .stream({
                 onmessage: rawTx => {
                     this.reconnectDelay = undefined
+                    this.lastTxPagingToken = rawTx.paging_token
+                    this.lastLedger = rawTx.ledger
+                    this.lastTxHash = rawTx.hash
                     this.enqueue([rawTx])
                 },
                 onerror: err => {
@@ -150,7 +158,26 @@ class TransactionWatcher {
      * Terminates watching stream
      */
     stopWatching() {
-        this.releaseStream && this.releaseStream()
+        this.streaming = false
+        if (this.releaseStream) {
+            this.releaseStream()
+            this.releaseStream = null
+        }
+    }
+
+    /**
+     * Returns current watcher status
+     */
+    getStatus() {
+        return {
+            streaming: this.streaming && !!this.releaseStream,
+            lastLedger: this.lastLedger,
+            lastTxPagingToken: this.lastTxPagingToken,
+            lastTxHash: this.lastTxHash,
+            queueLength: this.queue.length,
+            processing: this.processing,
+            reconnectDelay: this.reconnectDelay
+        }
     }
 }
 

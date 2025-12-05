@@ -167,6 +167,15 @@ class Notifier {
                 console.error(err)
             })
     }
+
+    /**
+     * Returns current notifier status
+     */
+    getStatus() {
+        return {
+            inProgress: this.inProgress.size
+        }
+    }
 }
 
 module.exports = Notifier
