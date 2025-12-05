@@ -52,6 +52,7 @@ class Observer {
             })
             .then(newSubscription => {
                 this.subscriptions.push(newSubscription)
+                console.log(`Subscription created: id=${newSubscription.id} pubkey=${newSubscription.pubkey || 'anonymous'}`)
                 return newSubscription
             })
     }
@@ -65,6 +66,7 @@ class Observer {
                     if (s.id == subscriptionId) { //intended non-strict comparision
                         s.status = 1
                         this.subscriptions.splice(i, 1)
+                        console.log(`Subscription removed: id=${s.id} pubkey=${s.pubkey || 'anonymous'}`)
                         return s.save()
                     }
                 }
