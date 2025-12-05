@@ -1,5 +1,5 @@
 const UserProvider = require('../user-provider'),
-    uuidv4 = require('uuid/v4')
+    { v4: uuidv4 } = require('uuid')
 
 function ensureId(model) {
     if (!model || model.id) return model

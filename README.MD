@@ -207,7 +207,7 @@ in previous request.
 ##### Example
 
 ```
-const {Keypair} = require('stellar-sdk')
+const {Keypair} = require('@stellar/stellar-sdk')
 
 //encode path components
 function encodeUriParams(object) {

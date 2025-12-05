@@ -1,4 +1,4 @@
-const {Transaction} = require('stellar-sdk'),
+const {Transaction} = require('@stellar/stellar-sdk'),
     BigNumber = require('bignumber.js'),
     {parseAsset, nativeAsset} = require('../util/asset-helper')
 
