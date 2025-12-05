@@ -149,6 +149,10 @@ function normalizeOperation(operation) {
 
 function processOperation(operation, txDetails, applicationOrder) {
     let normalized = normalizeOperation(operation, txDetails.source)
+    if (!normalized) {
+        console.warn(`Unsupported operation type: ${operation.type}`)
+        return null //ignore unsupported operation types
+    }
     // assign operation generic ID
     // see https://github.com/stellar/go/blob/6a367049e8f9ad52798f5c8f69df8b875fde4a1a/services/horizon/internal/toid/main.go
     normalized.id = new BigNumber(txDetails.paging_token).plus(new BigNumber(applicationOrder + 1)).toString()
@@ -220,7 +224,7 @@ function parseTransaction(transaction) {
     return {
         id: txDetails.hash,
         details: txDetails,
-        operations: xdrTx.operations.map((op, i) => processOperation(op, txDetails, i))
+        operations: xdrTx.operations.map((op, i) => processOperation(op, txDetails, i)).filter(op => !!op)
         //TODO: retrieve effects from transaction.result_xdr
     }
 }
