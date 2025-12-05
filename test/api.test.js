@@ -42,6 +42,7 @@ describe('API', function () {
                 observer.stop()
                 storage.finalize().then(() => done())
             })
+
         })
     })
 
