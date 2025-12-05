@@ -30,13 +30,13 @@
     "node": ">=20.0.0"
   },
   "dependencies": {
+    "@stellar/stellar-sdk": "^14.4.1",
     "axios": "1.13.2",
     "body-parser": "^2.2.1",
-    "cross-env": "^10.1.0",
     "cors": "^2.8.5",
+    "cross-env": "^10.1.0",
     "express": "^5.2.1",
     "mongoose": "^9.0.1",
-    "@stellar/stellar-sdk": "^14.4.1",
     "throttleit": "^2.1.0",
     "uuid": "^13.0.0"
   },

@@ -30,13 +30,15 @@ describe('API', function () {
         })
     })
 
-    after(async function () {
+    after(function () {
+        this.timeout(20000)
         config.authorization = false
-        await Promise.all([
+        return Promise.all([
             storage.provider.userProvider.deleteAllUsers(),
             storage.provider.removeAllSubscriptions()
-        ])
-        server.shutdown()
+        ]).then(() => {
+            process.exit(0)
+        })
     })
 
     describe('Subscriptions', () => {

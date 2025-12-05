@@ -1,4 +1,4 @@
-const {Transaction} = require('@stellar/stellar-sdk'),
+const {TransactionBuilder} = require('@stellar/stellar-sdk'),
     BigNumber = require('bignumber.js'),
     {parseAsset, nativeAsset} = require('../util/asset-helper')
 
@@ -188,7 +188,10 @@ function processMemo(rawMemo) {
 function parseTransaction(transaction) {
     let xdrTx
     try {
-        xdrTx = new Transaction(transaction.envelope_xdr, '')
+        xdrTx = TransactionBuilder.fromXDR(transaction.envelope_xdr, 'Public')
+        if (xdrTx.innerTransaction) {
+            xdrTx = xdrTx.innerTransaction
+        }
     } catch (e) {
         console.error(e)
         console.error('Tx envelope: ' + transaction.envelope_xdr)
