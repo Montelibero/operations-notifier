@@ -144,6 +144,110 @@ function normalizeOperation(operation) {
                 type_i: 11,
                 bump_to: operation.bumpTo
             }
+        case 'createClaimableBalance':
+            return {
+                type: 'create_claimable_balance',
+                type_i: 14,
+                asset: normalizeAsset(operation.asset),
+                amount: operation.amount,
+                claimants: operation.claimants
+            }
+        case 'claimClaimableBalance':
+            return {
+                type: 'claim_claimable_balance',
+                type_i: 15,
+                balanceId: operation.balanceId
+            }
+        case 'beginSponsoringFutureReserves':
+            return {
+                type: 'begin_sponsoring_future_reserves',
+                type_i: 16,
+                sponsoredId: operation.sponsoredId
+            }
+        case 'endSponsoringFutureReserves':
+            return {
+                type: 'end_sponsoring_future_reserves',
+                type_i: 17
+            }
+        case 'revokeSponsorship': {
+            const res = {
+                type: 'revoke_sponsorship',
+                type_i: 18
+            }
+            if (operation.ledgerKey) {
+                res.ledgerKey = operation.ledgerKey
+            } else if (operation.signer) {
+                res.signer = {
+                    accountId: operation.signer.accountId,
+                    signerKey: operation.signer.signerKey
+                }
+            } else {
+                res.accountId = operation.account
+            }
+            return res
+        }
+        case 'clawback':
+            return {
+                type: 'clawback',
+                type_i: 19,
+                from: operation.from,
+                asset: normalizeAsset(operation.asset),
+                amount: operation.amount
+            }
+        case 'clawbackClaimableBalance':
+            return {
+                type: 'clawback_claimable_balance',
+                type_i: 20,
+                balanceId: operation.balanceId
+            }
+        case 'setTrustLineFlags':
+            return {
+                type: 'set_trustline_flags',
+                type_i: 21,
+                trustor: operation.trustor,
+                asset: normalizeAsset(operation.asset),
+                setFlags: operation.setFlags,
+                clearFlags: operation.clearFlags
+            }
+        case 'liquidityPoolDeposit':
+            return {
+                type: 'liquidity_pool_deposit',
+                type_i: 22,
+                liquidityPoolId: operation.liquidityPoolId,
+                maxAmountA: operation.maxAmountA,
+                maxAmountB: operation.maxAmountB,
+                minPrice: operation.minPrice,
+                maxPrice: operation.maxPrice
+            }
+        case 'liquidityPoolWithdraw':
+            return {
+                type: 'liquidity_pool_withdraw',
+                type_i: 23,
+                liquidityPoolId: operation.liquidityPoolId,
+                amount: operation.amount,
+                minAmountA: operation.minAmountA,
+                minAmountB: operation.minAmountB
+            }
+        case 'invokeHostFunction':
+            return {
+                type: 'invoke_host_function',
+                type_i: 24,
+                function: operation.function,
+                parameters: operation.parameters,
+                footprint: operation.footprint,
+                authority: operation.authority
+            }
+        case 'extendFootprintTTL':
+            return {
+                type: 'extend_footprint_ttl',
+                type_i: 25,
+                extendTo: operation.extendTo
+            }
+        case 'restoreFootprint':
+            return {
+                type: 'restore_footprint',
+                type_i: 26
+            }
     }
 }
 
