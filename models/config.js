@@ -11,6 +11,8 @@ function parseEnv(key) {
             defaultValue = config[path]
         if (typeof defaultValue === 'number') {
             value = parseInt(value)
+        } else if (typeof defaultValue === 'boolean') {
+            value = value === 'true' || value === '1'
         }
         config[path] = value
     }
@@ -22,6 +24,7 @@ parseEnv('STORAGE_CONNECTION_STRING')
 parseEnv('API_PORT')
 parseEnv('API_HOST')
 parseEnv('HORIZON')
+parseEnv('HORIZON_ALLOW_HTTP')
 parseEnv('SIGNATURE_SECRET')
 parseEnv('MAX_ACTIVE_SUBSCRIPTIONS')
 parseEnv('MAX_ACTIVE_SUBSCRIPTIONS_PER_USER')

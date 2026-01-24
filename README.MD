@@ -76,7 +76,7 @@ Docker image by [@sgehrman](https://github.com/sgehrman) can be found
 1\. Clone the repository.
 
 ```
-git clone https://github.com/Montelibero/operations-notifier
+git clone https://github.com/stellar-expert/operations-notifier
 ```
 
 2\. Install required NPM packages.
@@ -128,6 +128,10 @@ Env parameter: `API_HOST`
 Horizon server URL.\
 Default value: `"https://horizon.stellar.org"`.\
 Env parameter: `HORIZON`
+- **horizonAllowHttp**\
+Allow insecure HTTP Horizon URLs (use for local mocks).\
+Default value: `false`.\
+Env parameter: `HORIZON_ALLOW_HTTP`
 - **reactionResponseTimeout**\
 Maximum expected HTTP response timeout (in seconds). 
 If the reaction URL takes more time to respond, the request is aborted and
@@ -201,6 +205,7 @@ Other storage providers can be easily connected through the standard interface.
   "apiPort": 4021,
   "apiHost": "",
   "horizon": "https://horizon.stellar.org",
+  "horizonAllowHttp": false,
   "signatureSecret": "SDBT736EJIIRDC3RSN544NO6OSNMZAWAKRARLOMRP2XJAOGKTQLFFR3V",
   "maxActiveSubscriptions": 10000,
   "maxActiveSubscriptionsPerUser": 100,
@@ -212,6 +217,13 @@ Other storage providers can be easily connected through the standard interface.
   "adminAuthenticationToken": "98c12910bf35c79a800e9ea893a93b078ea92fc7a26ca76c0cd2f6003464d781"
 }
 ```
+
+#### Local HTTP Horizon (tests/mocks)
+
+If you run a local Horizon mock over HTTP (e.g., `http://127.0.0.1:1234`), set:
+
+- `horizonAllowHttp: true` in `app.config.json`, or
+- `HORIZON_ALLOW_HTTP=true` in the environment.
 
 ## API
 
@@ -477,7 +489,7 @@ Request headers:
 
 ## Testing
 
-Run all tests (currently almost non existent) with 
+Run all tests with
 
 ```
 npm run test

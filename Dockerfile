@@ -1,20 +1,24 @@
-# Используем официальный образ Node.js
+# Use the official Node.js image
 FROM node:20
 
-# Устанавливаем рабочую директорию
+# Set the working directory
 WORKDIR /app
 
-# Копируем package.json и package-lock.json
+# Copy package.json and package-lock.json
 COPY package*.json ./
 
-# Устанавливаем зависимости
+# Install dependencies
 RUN npm install
 
-# Копируем исходный код
+# Copy the source code
 COPY . .
 
-# (Опционально) Указываем порт, если нужен для API
+# Metadata for the container image
+ENV SERVICE_VERSION=0.5.1
+LABEL org.opencontainers.image.version="0.5.1"
+
+# Expose the API port
 EXPOSE 4021
 
-# Команда для запуска сервиса
+# Start the service
 CMD ["npm", "run", "start"]

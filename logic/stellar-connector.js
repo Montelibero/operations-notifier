@@ -7,5 +7,7 @@ module.exports = {
     /**
      * Horizon wrapper instance
      */
-    horizon: new Horizon.Server(config.horizon)//a Horizon wrapper instance
+    horizon: new Horizon.Server(config.horizon, {
+        allowHttp: !!config.horizonAllowHttp
+    })//a Horizon wrapper instance
 }

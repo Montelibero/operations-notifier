@@ -5,6 +5,7 @@
   "apiPort": 4021,
   "apiHost": "127.0.0.1",
   "horizon": "https://horizon.stellar.org",
+  "horizonAllowHttp": false,
   "signatureSecret": "SDBT736EJIIRDC3RSN544NO6OSNMZAWAKRARLOMRP2XJAOGKTQLFFR3V",
   "maxActiveSubscriptions": 10000,
   "maxActiveSubscriptionsPerUser": 1000,
