@@ -9,8 +9,8 @@ JSON-encoded HTTP POST requests.
 - Highly configurable.
 - Supports operations filtering by account, asset, transaction memo, and 
 operation type. 
-- Guaranteed delivery, even if the notification recipient or the Notifier itself
-is down for some time.
+- Guaranteed delivery with persistent storage, even if the notification recipient
+or the Notifier itself is down for some time.
 - Supports public and private Stellar networks.
 - Can be used as a shared microservice that streams events to multiple endpoints.
 - Predictable performance – tested with thousands of subscriptions.
@@ -46,7 +46,7 @@ was triggered.
 Notifier relies on an event stream from Horizon server, so you'll need to choose
 a public Horizon service
 (like https://horizon.stellar.org and https://horizon-testnet.stellar.org/), or
-you own hosted Horizon instance. The latter option is preferable for production
+your own hosted Horizon instance. The latter option is preferable for production
 setups. Nevertheless, public Horizon instances supported by SDF and other
 community members work just fine as well.
 
@@ -132,18 +132,17 @@ Env parameter: `HORIZON`
 Maximum expected HTTP response timeout (in seconds). 
 If the reaction URL takes more time to respond, the request is aborted and
 notification is marked as failed.\
-Default value: `10`.\
+Default value: `20`.\
 Env parameter: `REACTION_RESPONSE_TIMEOUT`
 - **authorization**\
 Server authorization mode.\
 `disabled` mode turns off the authentication (recommended for local installations).\
-`token` authentication expects `access_token` with user requests (see
+Any other value enables ed25519 authentication (see
 [API Authentication](#authentication)).\
 Default value: `"disabled"`.\
 Env parameter: `AUTHORIZATION`
 - **adminAuthenticationToken**\
-API authentication token for admin user (for `"authentication"="token"` mode). 
-Leave empty to use a randomly generated token.\
+API authentication token for admin user. Leave empty to disable admin token auth.\
 Default Value: `""`.\
 Env parameter: `ADMIN_AUTHENTICATION_TOKEN`
 - **signatureSecret**\
@@ -204,11 +203,12 @@ Other storage providers can be easily connected through the standard interface.
   "horizon": "https://horizon.stellar.org",
   "signatureSecret": "SDBT736EJIIRDC3RSN544NO6OSNMZAWAKRARLOMRP2XJAOGKTQLFFR3V",
   "maxActiveSubscriptions": 10000,
+  "maxActiveSubscriptionsPerUser": 100,
   "notificationConcurrency": 100,
   "maxDeliveryFailures": 100,
   "maxNotificationAgeSeconds": 604800,
   "maxConsecutiveLostNotifications": 10,
-  "reactionResponseTimeout": 10,
+  "reactionResponseTimeout": 20,
   "adminAuthenticationToken": "98c12910bf35c79a800e9ea893a93b078ea92fc7a26ca76c0cd2f6003464d781"
 }
 ```
@@ -221,13 +221,16 @@ With `authorization` config parameter set to `disabled`, there is no need to
 bother about authentication. But it only works when the service is not exposed
 to public networks (i.e. behind the firewall).
 
-To enable ed25519 authentication, set `authorization` parameter to `enabled`.
-In this mode, any interaction with API requires an authorization
-header `Authorization: ed25519 <public_key>.<signature>`, where `public_key` is
-a ed25519 public key and `signature` is a cryptographic signature of urlencoded
-request params serialized in hex format. Please note, that all requests to 
-API endpoints should contain `nonce` param and the value should be greater than
-in previous request.
+To enable ed25519 authentication, set `authorization` to any value other than
+`disabled` (for example, `enabled` or `token`). In this mode, any interaction with
+API requires an authorization header `Authorization: ed25519 <public_key>.<signature>`
+(or `X-Access-Token`), where `public_key` is an ed25519 public key and
+`signature` is a cryptographic signature of urlencoded request params serialized
+in hex format. All requests to API endpoints must contain a `nonce` param and the
+value should be greater than the previously used nonce for this public key.
+
+Admin requests can use `Authorization: <ADMIN_AUTHENTICATION_TOKEN>` instead of
+ed25519 signatures.
 
 ### Status
 
@@ -241,6 +244,32 @@ in previous request.
   - `lastIngestedTx` — paging token of the last processed transaction.
   - `stream` — stream status (last ledger, last tx hash/paging token, queue length, reconnect delay).
   - `notifier` — notifier status (in-flight notifications).
+
+#### Status response schema
+
+```
+{
+  "version": "0.4.3",
+  "uptime": "3h 10m 42s",
+  "publicKey": "G...SIGNER...",
+  "observing": true,
+  "subscriptions": 123,
+  "lostNotifications": 0,
+  "lastIngestedTx": "1234567890",
+  "stream": {
+    "streaming": true,
+    "lastLedger": 123456,
+    "lastTxPagingToken": "1234567890",
+    "lastTxHash": "abcdef...",
+    "queueLength": 0,
+    "processing": false,
+    "reconnectDelay": 1000
+  },
+  "notifier": {
+    "inProgress": 1
+  }
+}
+```
 
 ##### Example
 
@@ -262,7 +291,7 @@ const payload = encodeUriParams({
     foo: 'foo'
 })
 
-const keyPair = new KeyPair('private_key'),
+const keyPair = Keypair.fromSecret('private_key'),
     signature = keyPair.sign(payload).toString('hex')
 
 const authHeader = `ed25519 ${keyPair.publicKey()}.${signature}`,
@@ -279,7 +308,7 @@ const body = {
     foo: 'foo'
 }
 
-const keyPair = new KeyPair('private_key'),
+const keyPair = Keypair.fromSecret('private_key'),
     signature = keyPair.sign(encodeUriParams(body)).toString('hex')
 
 const authHeader = `ed25519 ${keyPair.publicKey()}.${signature}`
@@ -299,11 +328,16 @@ POST /api/subscription
 by notification
 - **account** [*string*] (optional) - an account address to track
 - **memo** [*string*] (optional) - expected transaction memo
-- **account** [*string*] (optional) - an account address to track
 - **asset_code** [*string*] (optional) - asset code to track (specify XLM and no
 issuer to track operations involving XLM)
 - **asset_issuer** [*string*] (optional) - asset issuer to track
-- **operation_types** [*Array\<Number\>*] (optional) - operation types to track you can fint number https://developers.stellar.org/docs/data/analytics/hubble/data-catalog/data-dictionary/bronze/history-operations 
+- **operation_types** [*Array\<Number\>*] (optional) - operation types to track (currently 0..10),
+array or comma-separated string. You can find numbers at
+https://developers.stellar.org/docs/data/analytics/hubble/data-catalog/data-dictionary/bronze/history-operations
+- **expires** [*date/epoch*] (optional) - expiration date for subscription
+
+Note: if authentication is enabled, include a `nonce` param in the request body
+that is greater than the previous nonce used for this public key.
 
 Note: at least one operation filtering criteria should be specified.
 
@@ -312,9 +346,10 @@ Response example:
 ```
 {
   "id": "5ae88ef89a9e5d4a589cf27d",
-  "user": "5ae87f6bc6073d3e6c9c7d1d",
+  "pubkey": "GCFX...PUBLIC_KEY...",
   "status": 0,
   "delivery_failures": 0,
+  "lost_notifications": 0,
   "sent": 8,
   "reaction_url": "http://localhost:4022/test/reaction",
   "operation_types": [
@@ -353,9 +388,10 @@ Response example:
 [
   {
     "id": "5ae88ef89a9e5d4a589cf27d",
-    "user": "5ae87f6bc6073d3e6c9c7d1d",
+    "pubkey": "GCFX...PUBLIC_KEY...",
     "status": 0,
     "delivery_failures": 0,
+    "lost_notifications": 0,
     "sent": 8,
     "reaction_url": "http://localhost:4022/test/reaction",
     "operation_types": [
@@ -367,10 +403,11 @@ Response example:
   },
   {
     "id": "5ae88f54397cbf2474ef27e1",
-    "user": "5ae87f6bc6073d3e6c9c7d1d",
+    "pubkey": "GCFX...PUBLIC_KEY...",
     "status": 0,
     "operation_types": [],
     "delivery_failures": 4,
+    "lost_notifications": 0,
     "sent": 0,
     "reaction_url": "http://localhost:4022/test/reaction2",
     "asset_type": 0,
@@ -379,6 +416,20 @@ Response example:
   }
 ]
 ```
+
+#### Subscription response fields
+
+Each subscription object may include:
+
+- `id` — subscription id
+- `pubkey` — owner public key (null for admin-created anonymous subscriptions)
+- `status` — 0 active, 1 deleted
+- `reaction_url` — webhook URL
+- `account` / `asset_*` / `memo` / `operation_types` — filter fields (optional)
+- `delivery_failures` — consecutive delivery failures
+- `lost_notifications` — consecutive lost notifications (resets on success)
+- `sent` — delivered notifications count
+- `created` / `updated` — timestamps
 
 ## Notifications Format
 
@@ -421,7 +472,7 @@ Notifications are sent as JSON-encoded POST requests with the following format:
 
 Request headers:
 
-- `X-Request-ED25519-Signature` – the ED25519 signature for the notification body.
+- `X-Request-ED25519-Signature` – the ED25519 signature for the notification body (base64).
 - `X-Subscription` – corresponding subscription id.
 
 ## Testing
