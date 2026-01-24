@@ -45,6 +45,9 @@ module.exports = function (app) {
                 publicKey: signer.getPublicKey(),
                 observing: observer.observing,
                 subscriptions: subscriptions ? subscriptions.length : 0,
+                lostNotifications: subscriptions
+                    ? subscriptions.reduce((sum, s) => sum + (s.lost_notifications || 0), 0)
+                    : 0,
                 lastIngestedTx,
                 stream: observer.transactionWatcher && observer.transactionWatcher.getStatus
                     ? observer.transactionWatcher.getStatus()

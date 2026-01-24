@@ -29,7 +29,9 @@ module.exports = function (config) {
 
         // error handler
         app.use((err, req, res, next) => {
-            if (err) console.error(err)
+            const isTest = process.env.NODE_ENV === 'test'
+            const isExpected = err && err.code && err.code < 500
+            if (err && !(isTest && isExpected)) console.error(err)
             if (res.headersSent) return next(err)
             res.status((err && err.code) || 500).end()
         })
@@ -41,15 +43,17 @@ module.exports = function (config) {
             throw new Error('Invalid port')
         }
 
-        //set API port
+        //set API port/host
         const port = normalizePort(process.env.PORT || config.apiPort || 3000)
+        const host = process.env.API_HOST || config.apiHost
         app.set('port', port)
+        if (host) app.set('host', host)
 
         //instantiate server
         const server = http.createServer(app)
 
         server.on('error', reject)
-        server.listen(port, () => {
+        server.listen(port, host, () => {
             let addr = server.address(),
                 bind = typeof addr === 'string' ? 'pipe ' + addr : 'port ' + addr.port
             console.log('Listening on ' + bind)

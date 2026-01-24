@@ -48,6 +48,10 @@ class SubscriptionModel extends Model {
      */
     delivery_failures = 0
     /**
+     * Consecutive lost notifications counter. Reset to 0 on successful delivery
+     */
+    lost_notifications = 0
+    /**
      * Notifications sent
      */
     sent = 0

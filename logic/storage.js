@@ -156,7 +156,8 @@ class Storage {
 
         let subscription = {
                 pubkey: user ? user.pubkey : null,
-                reaction_url: subscriptionParams.reaction_url
+                reaction_url: subscriptionParams.reaction_url,
+                lost_notifications: 0
             },
             isValid = false
 

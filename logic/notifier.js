@@ -97,6 +97,7 @@ class Notifier {
                 evict(subscription.notifications, notification)
 
                 subscription.delivery_failures = 0
+                subscription.lost_notifications = 0
                 subscription.sent++
                 subscription.ignoreUntil = undefined
                 console.log(`POST to ${subscription.reaction_url}. Notification: ${notification.id}.`)
@@ -126,6 +127,10 @@ class Notifier {
     }
 
     sendNotification(notification, subscription) {
+        const dropReason = this.getDropReason(notification, subscription)
+        if (dropReason) {
+            return this.markAsLost(notification, subscription, dropReason)
+        }
         //unwrap transaction details
         const payload = {...notification.payload},
             transaction = payload.transaction_details
@@ -166,6 +171,63 @@ class Notifier {
                 console.error(`Failed to update subscription ${subscription.id}`)
                 console.error(err)
             })
+    }
+
+    getDropReason(notification, subscription) {
+        const maxAgeSeconds = parseInt(config.maxNotificationAgeSeconds)
+        if (maxAgeSeconds > 0) {
+            const ageSeconds = this.getNotificationAgeSeconds(notification)
+            if (ageSeconds !== null && ageSeconds >= maxAgeSeconds) {
+                return 'stale_notification'
+            }
+        }
+        const maxFailures = parseInt(config.maxDeliveryFailures)
+        if (maxFailures > 0 && subscription.delivery_failures >= maxFailures) {
+            return 'max_delivery_failures'
+        }
+        return null
+    }
+
+    getNotificationAgeSeconds(notification) {
+        if (!notification || !notification.created) return null
+        const created = new Date(notification.created)
+        if (isNaN(created.getTime())) return null
+        return Math.floor((Date.now() - created.getTime()) / 1000)
+    }
+
+    markAsLost(notification, subscription, reason) {
+        evict(notification.subscriptions, subscription.id)
+        return storage.markAsProcessed(notification, subscription)
+            .then(() => {
+                evict(subscription.notifications, notification)
+                subscription.delivery_failures = 0
+                subscription.ignoreUntil = undefined
+                subscription.lost_notifications = (subscription.lost_notifications || 0) + 1
+                console.warn(`Dropped notification ${notification.id} for subscription ${subscription.id}. Reason: ${reason}.`)
+                if (this.shouldDisableSubscription(subscription)) {
+                    this.disableSubscription(subscription, reason)
+                }
+            })
+            .then(() => storage.saveSubscription(subscription))
+            .catch(err => {
+                console.error(`Failed to mark notification ${notification.id} as lost`)
+                console.error(err)
+            })
+    }
+
+    shouldDisableSubscription(subscription) {
+        const maxLost = parseInt(config.maxConsecutiveLostNotifications)
+        return maxLost > 0 && (subscription.lost_notifications || 0) >= maxLost
+    }
+
+    disableSubscription(subscription, reason) {
+        if (subscription.status === 1) return
+        subscription.status = 1
+        if (this.observer && this.observer.subscriptions) {
+            const index = this.observer.subscriptions.findIndex(s => s.id == subscription.id)
+            if (index >= 0) this.observer.subscriptions.splice(index, 1)
+        }
+        console.warn(`Subscription auto-removed: id=${subscription.id} pubkey=${subscription.pubkey || 'anonymous'} reason=${reason}`)
     }
 
     /**

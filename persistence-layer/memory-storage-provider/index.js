@@ -41,6 +41,11 @@ class MemoryStorageProvider extends StorageProvider {
         let inserted = 0
         notifications.forEach(notification => {
             ensureId(notification)
+            if (!notification.created) {
+                const now = new Date()
+                notification.created = now
+                notification.updated = now
+            }
             if (repository.notifications.some(exisiting => exisiting.id === notification.id)) return
             repository.notifications.push(notification)
             inserted++
@@ -68,6 +73,7 @@ class MemoryStorageProvider extends StorageProvider {
     saveSubscription(subscription) {
         if (!repository.subscriptions.includes(subscription)) {
             ensureId(subscription)
+            if (subscription.lost_notifications === undefined) subscription.lost_notifications = 0
             repository.subscriptions.push(subscription)
         }
         return Promise.resolve(subscription)

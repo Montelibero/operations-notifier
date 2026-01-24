@@ -8,6 +8,9 @@
   "maxActiveSubscriptions": 10000,
   "maxActiveSubscriptionsPerUser": 100,
   "notificationConcurrency": 100,
+  "maxDeliveryFailures": 100,
+  "maxNotificationAgeSeconds": 604800,
+  "maxConsecutiveLostNotifications": 10,
   "reactionResponseTimeout": 20,
   "adminAuthenticationToken": "98c12910bf35c79a800e9ea893a93b078ea92fc7a26ca76c0cd2f6003464d781"
 }

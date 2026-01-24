@@ -120,6 +120,10 @@ Env parameter: `STORAGE_CONNECTION_STRING`
 API exposed by the notifier.\
 Default value: `4021`\
 Env parameter: `API_PORT`
+- **apiHost**\
+API bind host (useful for tests or restricted environments).\
+Default value: `""` (bind all interfaces).\
+Env parameter: `API_HOST`
 - **horizon**\
 Horizon server URL.\
 Default value: `"https://horizon.stellar.org"`.\
@@ -161,6 +165,23 @@ Maximum concurrent notification threads (effectively, it equals the maximum
 parallel pending HTTP requests).\
 Default value: `100`.\
 Env parameter: `NOTIFICATION_CONCURRENCY`
+- **maxDeliveryFailures**\
+Maximum consecutive delivery failures for a subscription before the current
+notification is dropped as lost.\
+Default value: `100`.\
+Env parameter: `MAX_DELIVERY_FAILURES`
+- **maxNotificationAgeSeconds**\
+Maximum age (in seconds) of a notification before it is dropped as lost.\
+Default value: `604800` (7 days).\
+Env parameter: `MAX_NOTIFICATION_AGE_SECONDS`
+- **maxConsecutiveLostNotifications**\
+Maximum consecutive lost notifications for a subscription before it is
+automatically removed.\
+Default value: `10`.\
+Env parameter: `MAX_CONSECUTIVE_LOST_NOTIFICATIONS`
+
+Lost notifications are dropped when they exceed the max age or max consecutive
+delivery failures. The lost counter resets to 0 after a successful delivery.
 
 #### Storage providers
 
@@ -179,10 +200,14 @@ Other storage providers can be easily connected through the standard interface.
   "storageProvider": "mongodb",
   "storageConnectionString": "mongodb://127.0.0.1:27017/notifier",
   "apiPort": 4021,
+  "apiHost": "",
   "horizon": "https://horizon.stellar.org",
   "signatureSecret": "SDBT736EJIIRDC3RSN544NO6OSNMZAWAKRARLOMRP2XJAOGKTQLFFR3V",
   "maxActiveSubscriptions": 10000,
   "notificationConcurrency": 100,
+  "maxDeliveryFailures": 100,
+  "maxNotificationAgeSeconds": 604800,
+  "maxConsecutiveLostNotifications": 10,
   "reactionResponseTimeout": 10,
   "adminAuthenticationToken": "98c12910bf35c79a800e9ea893a93b078ea92fc7a26ca76c0cd2f6003464d781"
 }
@@ -212,6 +237,7 @@ in previous request.
   - `publicKey` — signer public key.
   - `observing` — whether the observer is running.
   - `subscriptions` — active subscription count.
+  - `lostNotifications` — sum of consecutive lost notifications across active subscriptions.
   - `lastIngestedTx` — paging token of the last processed transaction.
   - `stream` — stream status (last ledger, last tx hash/paging token, queue length, reconnect delay).
   - `notifier` — notifier status (in-flight notifications).

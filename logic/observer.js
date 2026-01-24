@@ -45,7 +45,8 @@ class Observer {
                 if (this.getActiveSubscriptionsCount() >= config.maxActiveSubscriptions) {
                     return Promise.reject(errors.forbidden('Max active subscriptions exceeded.'))
                 }
-                if (config.authorization && this.getUserActiveSubscriptionsCount(user) >= config.maxUserActiveSubscriptions) {
+                const maxPerUser = config.maxActiveSubscriptionsPerUser || config.maxUserActiveSubscriptions
+                if (config.authorization && maxPerUser && this.getUserActiveSubscriptionsCount(user) >= maxPerUser) {
                     return Promise.reject(errors.forbidden('Max active subscriptions exceeded.'))
                 }
                 return storage.createSubscription(subscriptionParams, user)

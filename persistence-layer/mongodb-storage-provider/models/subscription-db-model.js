@@ -12,6 +12,7 @@ const subscriptionSchema = new Schema({
     operation_types: {type: [Number], index: true},
     reaction_url: {type: String},
     delivery_failures: {type: Number, default: 0},
+    lost_notifications: {type: Number, default: 0},
     sent: {type: Number, default: 0},
     expires: {type: Date}
 },
