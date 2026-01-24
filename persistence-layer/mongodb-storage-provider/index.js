@@ -58,11 +58,11 @@ class MongoDBStorageProvider extends StorageProvider {
     }
 
     removeNotification(notification) {
-        return notification.remove()
+        return Notification.deleteOne({_id: toObjectId(notification.id)})
     }
 
     markAsProcessed(notification, subscription) {
-        return Notification.update({_id: toObjectId(notification.id)},
+        return Notification.updateOne({_id: toObjectId(notification.id)},
             {$pull: {subscriptions: toObjectId(subscription.id)}})
             .then(() => notification)
     }
@@ -82,8 +82,8 @@ class MongoDBStorageProvider extends StorageProvider {
     }
 
     updateLastIngestedTx(ingestedTxSequence) {
-        return TxIngestionCursor.update({_id: 0},
-            {lastIngestedTx: ingestedTxSequence, updated: new Date()},
+        return TxIngestionCursor.updateOne({_id: 0},
+            {$set: {lastIngestedTx: ingestedTxSequence, updated: new Date()}},
             {upsert: true})
     }
 
