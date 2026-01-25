@@ -57,7 +57,8 @@ module.exports = function (app) {
                         ledgerQueueLength: streamStatus.ledgerQueueLength ?? null,
                         ledgerInProgress: streamStatus.ledgerInProgress ?? null,
                         ledgerWorkers: streamStatus.ledgerWorkers ?? null,
-                        processing: streamStatus.processing,
+                        txInProgress: streamStatus.txInProgress ?? 0,
+                        txWorkers: streamStatus.txWorkers ?? null,
                         reconnectDelay: streamStatus.reconnectDelay
                     }
                     : null

@@ -11,6 +11,7 @@
   "maxActiveSubscriptionsPerUser": 100,
   "notificationConcurrency": 100,
   "ledgerWorkers": 10,
+  "transactionWorkers": 10,
   "maxDeliveryFailures": 100,
   "maxNotificationAgeSeconds": 604800,
   "maxConsecutiveLostNotifications": 10,
