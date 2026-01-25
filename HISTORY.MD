@@ -1,3 +1,11 @@
+0.5.4 / 2026-01-25
+==================
+
+* Restore ledger-based streaming with limited worker concurrency.
+* Add rate-limit backoff logging and ledger lag logs.
+* Add ledger worker config (`LEDGER_WORKERS`) and document it.
+* Add `lastLedger` to status output.
+
 0.5.3 / 2026-01-25
 ==================
 

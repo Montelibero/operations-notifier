@@ -40,23 +40,39 @@ module.exports = function (app) {
             observer.loadSubscriptions(),
             storage.getLastIngestedTx()
         ])
-            .then(([subscriptions, lastIngestedTx]) => res.json({
-                version: pkgInfo.version,
-                uptime: elapsed(new Date(), started),
-                publicKey: signer.getPublicKey(),
-                observing: observer.observing,
-                subscriptions: subscriptions ? subscriptions.length : 0,
-                lostNotifications: subscriptions
-                    ? subscriptions.reduce((sum, s) => sum + (s.lost_notifications || 0), 0)
-                    : 0,
-                lastIngestedTx,
-                stream: observer.transactionWatcher && observer.transactionWatcher.getStatus
+            .then(([subscriptions, lastIngestedTx]) => {
+                const streamStatus = observer.transactionWatcher && observer.transactionWatcher.getStatus
                     ? observer.transactionWatcher.getStatus()
-                    : null,
-                notifier: observer.notifier && observer.notifier.getStatus
-                    ? observer.notifier.getStatus()
                     : null
-            }))
+                const normalizedStreamStatus = streamStatus
+                    ? {
+                        streaming: streamStatus.streaming,
+                        lastLedger: streamStatus.lastLedger ?? streamStatus.lastLedgerSeen ?? null,
+                        lastLedgerSeen: streamStatus.lastLedgerSeen ?? null,
+                        lastTxPagingToken: streamStatus.lastTxPagingToken,
+                        lastTxHash: streamStatus.lastTxHash,
+                        queueLength: streamStatus.queueLength,
+                        processing: streamStatus.processing,
+                        reconnectDelay: streamStatus.reconnectDelay
+                    }
+                    : null
+                return res.json({
+                    version: pkgInfo.version,
+                    uptime: elapsed(new Date(), started),
+                    publicKey: signer.getPublicKey(),
+                    observing: observer.observing,
+                    subscriptions: subscriptions ? subscriptions.length : 0,
+                    lostNotifications: subscriptions
+                        ? subscriptions.reduce((sum, s) => sum + (s.lost_notifications || 0), 0)
+                        : 0,
+                    lastLedger: normalizedStreamStatus ? normalizedStreamStatus.lastLedger : null,
+                    lastIngestedTx,
+                    stream: normalizedStreamStatus,
+                    notifier: observer.notifier && observer.notifier.getStatus
+                        ? observer.notifier.getStatus()
+                        : null
+                })
+            })
             .catch(e => {
                 console.error(e)
                 res.status(500).end()

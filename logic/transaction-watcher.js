@@ -33,6 +33,7 @@ class TransactionWatcher {
         this.processing = false
         this.observer = observer
         this.lastLedger = null
+        this.lastLedgerSeen = null
         this.lastTxPagingToken = null
         this.lastTxHash = null
         this.lastLagLogAt = 0
@@ -123,7 +124,8 @@ class TransactionWatcher {
         }
 
         this.observer.notifier.createNotifications(notifications)
-            .then(notifications => {
+            .then(createdNotifications => {
+                const savedNotifications = createdNotifications || notifications
                 storage.updateLastIngestedTx(tx.details.paging_token)
                     .catch(err => console.error(err))
                 //iterate through processed subscriptions
@@ -132,7 +134,7 @@ class TransactionWatcher {
                     if (!subscription.notifications) {
                         subscription.notifications = new Set()
                     }
-                    for (let notification of notifications) {
+                    for (let notification of savedNotifications) {
                         if (notification.subscriptions.some(s => s == subscription.id)) {
                             subscription.notifications.add(notification)
                         }
@@ -142,6 +144,11 @@ class TransactionWatcher {
                 this.processing = false
                 setImmediate(() => this.processQueue())
                 this.observer.notifier.startNewNotifierThread()
+            })
+            .catch(err => {
+                console.error(err)
+                this.processing = false
+                setImmediate(() => this.processQueue())
             })
     }
 
@@ -193,6 +200,7 @@ class TransactionWatcher {
      */
     trackLiveStream() {
         this.streaming = true
+        console.log('Starting ledger stream...')
         this.releaseStream = horizon
             .ledgers()
             .order('asc')
@@ -201,9 +209,18 @@ class TransactionWatcher {
                 onmessage: rawLedger => {
                     this.reconnectDelay = undefined
                     this.lastLedger = rawLedger.sequence
+                    this.lastLedgerSeen = rawLedger.sequence
+                    console.log(`Ledger received: ${rawLedger.sequence}`)
                     this.enqueueLedger(rawLedger.sequence)
                 },
                 onerror: err => {
+                    const status = err && (err.status || (err.response && err.response.status))
+                    const reset = err && err.response && err.response.headers
+                        ? err.response.headers['x-ratelimit-reset']
+                        : undefined
+                    const detail = status ? `status ${status}` : (err && err.message ? err.message : 'unknown error')
+                    const resetNote = reset ? `, retry-after ${reset}s` : ''
+                    console.log(`Ledger stream error (${detail}${resetNote}). Reconnecting...`)
                     this.stopWatching()
                     if (err.response && err.response.status === 429) {
                         const retryAfter = (parseInt(err.response.headers['x-ratelimit-reset']) || 10) * 1000
@@ -247,6 +264,9 @@ class TransactionWatcher {
                         this.lastTxPagingToken = lastTx.paging_token
                         this.lastTxHash = lastTx.hash
                         this.lastLedger = lastTx.ledger
+                        if (this.lastLedgerSeen === null && typeof lastTx.ledger === 'number') {
+                            this.lastLedgerSeen = lastTx.ledger
+                        }
                         if (fetchedCount < transactionsBatchSize) return resolve()
                         fetchLedgerTxBatch(lastTx.paging_token)
                     })
@@ -280,7 +300,8 @@ class TransactionWatcher {
     getStatus() {
         return {
             streaming: this.streaming && !!this.releaseStream,
-            lastLedger: this.lastLedger,
+            lastLedger: this.lastLedgerSeen ?? this.lastLedger ?? null,
+            lastLedgerSeen: this.lastLedgerSeen ?? null,
             lastTxPagingToken: this.lastTxPagingToken,
             lastTxHash: this.lastTxHash,
             queueLength: this.queue.length,
