@@ -49,9 +49,14 @@ module.exports = function (app) {
                         streaming: streamStatus.streaming,
                         lastLedger: streamStatus.lastLedger ?? streamStatus.lastLedgerSeen ?? null,
                         lastLedgerSeen: streamStatus.lastLedgerSeen ?? null,
+                        lastLedgerProcessed: streamStatus.lastLedgerProcessed ?? null,
+                        ledgerLag: streamStatus.ledgerLag ?? null,
                         lastTxPagingToken: streamStatus.lastTxPagingToken,
                         lastTxHash: streamStatus.lastTxHash,
                         queueLength: streamStatus.queueLength,
+                        ledgerQueueLength: streamStatus.ledgerQueueLength ?? null,
+                        ledgerInProgress: streamStatus.ledgerInProgress ?? null,
+                        ledgerWorkers: streamStatus.ledgerWorkers ?? null,
                         processing: streamStatus.processing,
                         reconnectDelay: streamStatus.reconnectDelay
                     }
@@ -66,6 +71,7 @@ module.exports = function (app) {
                         ? subscriptions.reduce((sum, s) => sum + (s.lost_notifications || 0), 0)
                         : 0,
                     lastLedger: normalizedStreamStatus ? normalizedStreamStatus.lastLedger : null,
+                    ledgerLag: normalizedStreamStatus ? normalizedStreamStatus.ledgerLag : null,
                     lastIngestedTx,
                     stream: normalizedStreamStatus,
                     notifier: observer.notifier && observer.notifier.getStatus

@@ -24,6 +24,9 @@ class Observer {
             .then(fetched => {
                 this.subscriptions = fetched || []
                 this.__loadingSubscriptionPromise = undefined
+                if (this.transactionWatcher && typeof this.transactionWatcher.processQueue === 'function') {
+                    this.transactionWatcher.processQueue()
+                }
                 return this.subscriptions
             })
         return this.__loadingSubscriptionPromise
@@ -97,7 +100,10 @@ class Observer {
         this.observing = true
         this.transactionWatcher.watch()
         this.loadSubscriptions()
-            .then(() => this.notifier.startNewNotifierThread())
+            .then(() => {
+                this.transactionWatcher.processQueue()
+                this.notifier.startNewNotifierThread()
+            })
     }
 
     stop() {

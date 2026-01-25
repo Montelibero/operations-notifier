@@ -34,6 +34,7 @@ class TransactionWatcher {
         this.observer = observer
         this.lastLedger = null
         this.lastLedgerSeen = null
+        this.lastLedgerProcessed = null
         this.lastTxPagingToken = null
         this.lastTxHash = null
         this.lastLagLogAt = 0
@@ -87,12 +88,12 @@ class TransactionWatcher {
             return this.processQueue()
         }
         const txLedger = rawTx && rawTx.ledger
-        if (typeof this.lastLedger === 'number' && typeof txLedger === 'number') {
-            const lag = this.lastLedger - txLedger
+        if (typeof this.lastLedgerSeen === 'number' && typeof txLedger === 'number') {
+            const lag = this.lastLedgerSeen - txLedger
             if (lag > 20) {
                 const now = Date.now()
                 if (!this.lastLagLogAt || now - this.lastLagLogAt > 5000) {
-                    console.log(`Lagging by ${lag} ledgers (tx ledger ${txLedger}, latest ${this.lastLedger}).`)
+                    console.log(`Lagging by ${lag} ledgers (tx ledger ${txLedger}, latest ${this.lastLedgerSeen}).`)
                     this.lastLagLogAt = now
                 }
             }
@@ -254,6 +255,7 @@ class TransactionWatcher {
 
     loadLedgerTransactions(sequence, txCursor) {
         return new Promise((resolve, reject) => {
+            let notFoundRetries = 0
             const fetchLedgerTxBatch = () => {
                 fetchTransactions(txCursor, sequence)
                     .then(({records}) => {
@@ -263,9 +265,10 @@ class TransactionWatcher {
                         const lastTx = records[fetchedCount - 1]
                         this.lastTxPagingToken = lastTx.paging_token
                         this.lastTxHash = lastTx.hash
-                        this.lastLedger = lastTx.ledger
+                        this.lastLedgerProcessed = lastTx.ledger
                         if (this.lastLedgerSeen === null && typeof lastTx.ledger === 'number') {
                             this.lastLedgerSeen = lastTx.ledger
+                            this.lastLedger = lastTx.ledger
                         }
                         if (fetchedCount < transactionsBatchSize) return resolve()
                         fetchLedgerTxBatch(lastTx.paging_token)
@@ -275,6 +278,11 @@ class TransactionWatcher {
                         if (delay !== null) {
                             this.reconnectDelay = delay
                             return setTimeout(fetchLedgerTxBatch, delay)
+                        }
+                        const status = e && e.response && e.response.status
+                        if ((status === 404 || status === 502 || status === 503 || status === 504) && notFoundRetries < 5) {
+                            notFoundRetries++
+                            return setTimeout(fetchLedgerTxBatch, 1000)
                         }
                         reject(e)
                     })
@@ -298,13 +306,21 @@ class TransactionWatcher {
      * Returns current watcher status
      */
     getStatus() {
+        const ledgerLag = (typeof this.lastLedgerSeen === 'number' && typeof this.lastLedgerProcessed === 'number')
+            ? this.lastLedgerSeen - this.lastLedgerProcessed
+            : null
         return {
             streaming: this.streaming && !!this.releaseStream,
             lastLedger: this.lastLedgerSeen ?? this.lastLedger ?? null,
             lastLedgerSeen: this.lastLedgerSeen ?? null,
+            lastLedgerProcessed: this.lastLedgerProcessed ?? null,
+            ledgerLag,
             lastTxPagingToken: this.lastTxPagingToken,
             lastTxHash: this.lastTxHash,
             queueLength: this.queue.length,
+            ledgerQueueLength: this.ledgerQueue.length,
+            ledgerInProgress: this.ledgerInProgress,
+            ledgerWorkers: this.maxLedgerWorkers,
             processing: this.processing,
             reconnectDelay: this.reconnectDelay
         }
