@@ -1,4 +1,5 @@
-const {horizon} = require('./stellar-connector'),
+const config = require('../models/config'),
+    {horizon} = require('./stellar-connector'),
     {parseTransaction} = require('./stream-processor'),
     {matches} = require('../util/subscription-match-helper'),
     storage = require('./storage')
@@ -26,6 +27,9 @@ function fetchTransactions(cursor, ledgerSequence = undefined) {
 class TransactionWatcher {
     constructor(observer) {
         this.queue = []
+        this.ledgerQueue = []
+        this.ledgerInProgress = 0
+        this.maxLedgerWorkers = Math.max(1, parseInt(config.ledgerWorkers || 10))
         this.processing = false
         this.observer = observer
         this.lastLedger = null
@@ -42,6 +46,26 @@ class TransactionWatcher {
         if (!transactions || !transactions.length) return
         Array.prototype.push.apply(this.queue, transactions)
         this.processQueue()
+    }
+
+    enqueueLedger(sequence) {
+        if (!sequence) return
+        this.ledgerQueue.push(sequence)
+        this.processLedgerQueue()
+    }
+
+    processLedgerQueue() {
+        if (!this.streaming) return
+        while (this.ledgerInProgress < this.maxLedgerWorkers && this.ledgerQueue.length) {
+            const sequence = this.ledgerQueue.shift()
+            this.ledgerInProgress++
+            this.loadLedgerTransactions(sequence)
+                .catch(err => console.error(err))
+                .finally(() => {
+                    this.ledgerInProgress--
+                    setImmediate(() => this.processLedgerQueue())
+                })
+        }
     }
 
     /**
@@ -165,8 +189,7 @@ class TransactionWatcher {
                 onmessage: rawLedger => {
                     this.reconnectDelay = undefined
                     this.lastLedger = rawLedger.sequence
-                    this.loadLedgerTransactions(rawLedger.sequence)
-                        .catch(err => console.error(err))
+                    this.enqueueLedger(rawLedger.sequence)
                 },
                 onerror: err => {
                     this.stopWatching()
@@ -193,9 +216,11 @@ class TransactionWatcher {
 
     getRateLimitDelay(err) {
         if (!err || !err.response || err.response.status !== 429) return null
-        const reset = parseInt(err.response.headers && err.response.headers['x-ratelimit-reset'])
-        if (!isNaN(reset) && reset > 0) return reset * 1000
-        return 10000
+        const headers = err.response.headers || {}
+        const reset = parseInt(headers['x-ratelimit-reset'])
+        const delaySeconds = !isNaN(reset) && reset > 0 ? reset : 10
+        console.log(`Horizon rate limit reached. Retrying in ${delaySeconds} seconds.`)
+        return delaySeconds * 1000
     }
 
     loadLedgerTransactions(sequence, txCursor) {
