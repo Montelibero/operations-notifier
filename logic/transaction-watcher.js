@@ -6,6 +6,32 @@ const config = require('../models/config'),
 
 const transactionsBatchSize = 200
 
+/**
+ * Get header value case-insensitively
+ * @param {Object} headers - HTTP headers object
+ * @param {string} name - Header name to find
+ * @returns {string|undefined} Header value or undefined
+ */
+function getHeader(headers, name) {
+    if (!headers) return undefined
+    // Try exact match first
+    if (headers[name] !== undefined) return headers[name]
+    // Try lowercase (axios normalizes to lowercase)
+    const lower = name.toLowerCase()
+    if (headers[lower] !== undefined) return headers[lower]
+    // Try uppercase
+    const upper = name.toUpperCase()
+    if (headers[upper] !== undefined) return headers[upper]
+    // Search through all keys case-insensitively
+    const lowerName = name.toLowerCase()
+    for (const key of Object.keys(headers)) {
+        if (key.toLowerCase() === lowerName) {
+            return headers[key]
+        }
+    }
+    return undefined
+}
+
 function fetchTransactions(cursor, ledgerSequence = undefined) {
     let builder = horizon
         .transactions()
@@ -87,7 +113,7 @@ class TransactionWatcher {
             this.processing = false
             return this.processQueue()
         }
-        const txLedger = rawTx && rawTx.ledger
+        const txLedger = rawTx && rawTx.ledger_attr
         if (typeof this.lastLedgerSeen === 'number' && typeof txLedger === 'number') {
             const lag = this.lastLedgerSeen - txLedger
             if (lag > 20) {
@@ -180,7 +206,7 @@ class TransactionWatcher {
                     const lastTx = records[records.length - 1]
                     this.lastTxPagingToken = lastTx.paging_token
                     this.lastTxHash = lastTx.hash
-                    this.lastLedger = lastTx.ledger
+                    this.lastLedger = lastTx.ledger_attr
                     this.enqueue(records)
                     setImmediate(() => this.trackTransactions())
                 }
@@ -216,15 +242,15 @@ class TransactionWatcher {
                 },
                 onerror: err => {
                     const status = err && (err.status || (err.response && err.response.status))
-                    const reset = err && err.response && err.response.headers
-                        ? err.response.headers['x-ratelimit-reset']
-                        : undefined
+                    const headers = err && err.response && err.response.headers
+                    const reset = getHeader(headers, 'X-RateLimit-Reset')
                     const detail = status ? `status ${status}` : (err && err.message ? err.message : 'unknown error')
                     const resetNote = reset ? `, retry-after ${reset}s` : ''
                     console.log(`Ledger stream error (${detail}${resetNote}). Reconnecting...`)
                     this.stopWatching()
                     if (err.response && err.response.status === 429) {
-                        const retryAfter = (parseInt(err.response.headers['x-ratelimit-reset']) || 10) * 1000
+                        const resetValue = parseInt(reset)
+                        const retryAfter = (!isNaN(resetValue) && resetValue > 0 ? resetValue : 10) * 1000
                         console.log(`Horizon rate limit reached. Resuming in ${retryAfter / 1000} seconds.`)
                         this.reconnectDelay = retryAfter
                     }
@@ -247,7 +273,8 @@ class TransactionWatcher {
     getRateLimitDelay(err) {
         if (!err || !err.response || err.response.status !== 429) return null
         const headers = err.response.headers || {}
-        const reset = parseInt(headers['x-ratelimit-reset'])
+        const resetHeader = getHeader(headers, 'X-RateLimit-Reset')
+        const reset = parseInt(resetHeader)
         const delaySeconds = !isNaN(reset) && reset > 0 ? reset : 10
         console.log(`Horizon rate limit reached. Retrying in ${delaySeconds} seconds.`)
         return delaySeconds * 1000
@@ -259,18 +286,28 @@ class TransactionWatcher {
             const fetchLedgerTxBatch = () => {
                 fetchTransactions(txCursor, sequence)
                     .then(({records}) => {
-                        if (!records || !records.length) return resolve()
+                        const txCount = records?.length || 0
+                        if (!records || !records.length) {
+                            this.lastLedgerProcessed = sequence
+                            if (sequence % 10 === 0) {
+                                console.log(`Ledger ${sequence} processed (0 transactions)`)
+                            }
+                            return resolve()
+                        }
                         this.enqueue(records)
                         const fetchedCount = records.length
                         const lastTx = records[fetchedCount - 1]
                         this.lastTxPagingToken = lastTx.paging_token
                         this.lastTxHash = lastTx.hash
-                        this.lastLedgerProcessed = lastTx.ledger
-                        if (this.lastLedgerSeen === null && typeof lastTx.ledger === 'number') {
-                            this.lastLedgerSeen = lastTx.ledger
-                            this.lastLedger = lastTx.ledger
+                        this.lastLedgerProcessed = lastTx.ledger_attr
+                        if (this.lastLedgerSeen === null && typeof lastTx.ledger_attr === 'number') {
+                            this.lastLedgerSeen = lastTx.ledger_attr
+                            this.lastLedger = lastTx.ledger_attr
                         }
-                        if (fetchedCount < transactionsBatchSize) return resolve()
+                        if (fetchedCount < transactionsBatchSize) {
+                            console.log(`Ledger ${sequence} processed (${txCount} transactions)`)
+                            return resolve()
+                        }
                         fetchLedgerTxBatch(lastTx.paging_token)
                     })
                     .catch(e => {
