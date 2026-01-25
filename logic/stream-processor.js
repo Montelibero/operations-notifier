@@ -1,6 +1,7 @@
 const {TransactionBuilder} = require('@stellar/stellar-sdk'),
     BigNumber = require('bignumber.js'),
-    {parseAsset, nativeAsset} = require('../util/asset-helper')
+    {parseAsset, nativeAsset} = require('../util/asset-helper'),
+    config = require('../models/config')
 
 function normalizeAsset(asset) {
     if (!asset) return null
@@ -296,7 +297,8 @@ function processMemo(rawMemo) {
 function parseTransaction(transaction) {
     let xdrTx
     try {
-        xdrTx = TransactionBuilder.fromXDR(transaction.envelope_xdr, 'Public')
+        const networkPassphrase = config.networkPassphrase || 'Public Global Stellar Network ; September 2015'
+        xdrTx = TransactionBuilder.fromXDR(transaction.envelope_xdr, networkPassphrase)
         if (xdrTx.innerTransaction) {
             xdrTx = xdrTx.innerTransaction
         }

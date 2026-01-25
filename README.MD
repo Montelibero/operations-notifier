@@ -128,6 +128,10 @@ Env parameter: `API_HOST`
 Horizon server URL.\
 Default value: `"https://horizon.stellar.org"`.\
 Env parameter: `HORIZON`
+- **networkPassphrase**\
+Stellar network passphrase used to parse transaction XDR.\
+Default value: `"Public Global Stellar Network ; September 2015"`.\
+Env parameter: `NETWORK_PASSPHRASE`
 - **horizonAllowHttp**\
 Allow insecure HTTP Horizon URLs (use for local mocks).\
 Default value: `false`.\
@@ -205,6 +209,7 @@ Other storage providers can be easily connected through the standard interface.
   "apiPort": 4021,
   "apiHost": "",
   "horizon": "https://horizon.stellar.org",
+  "networkPassphrase": "Public Global Stellar Network ; September 2015",
   "horizonAllowHttp": false,
   "signatureSecret": "SDBT736EJIIRDC3RSN544NO6OSNMZAWAKRARLOMRP2XJAOGKTQLFFR3V",
   "maxActiveSubscriptions": 10000,
