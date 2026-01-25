@@ -177,6 +177,10 @@ Maximum concurrent notification threads (effectively, it equals the maximum
 parallel pending HTTP requests).\
 Default value: `100`.\
 Env parameter: `NOTIFICATION_CONCURRENCY`
+- **ledgerWorkers**\
+Maximum number of parallel ledger fetch workers for transaction ingestion.\
+Default value: `10`.\
+Env parameter: `LEDGER_WORKERS`
 - **maxDeliveryFailures**\
 Maximum consecutive delivery failures for a subscription before the current
 notification is dropped as lost.\
@@ -220,6 +224,7 @@ Other storage providers can be easily connected through the standard interface.
   "maxActiveSubscriptions": 10000,
   "maxActiveSubscriptionsPerUser": 100,
   "notificationConcurrency": 100,
+  "ledgerWorkers": 10,
   "maxDeliveryFailures": 100,
   "maxNotificationAgeSeconds": 604800,
   "maxConsecutiveLostNotifications": 10,

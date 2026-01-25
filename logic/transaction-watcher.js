@@ -35,6 +35,7 @@ class TransactionWatcher {
         this.lastLedger = null
         this.lastTxPagingToken = null
         this.lastTxHash = null
+        this.lastLagLogAt = 0
         this.streaming = false
     }
 
@@ -83,6 +84,17 @@ class TransactionWatcher {
         if (!tx) { //failed to parse transaction
             this.processing = false
             return this.processQueue()
+        }
+        const txLedger = rawTx && rawTx.ledger
+        if (typeof this.lastLedger === 'number' && typeof txLedger === 'number') {
+            const lag = this.lastLedger - txLedger
+            if (lag > 20) {
+                const now = Date.now()
+                if (!this.lastLagLogAt || now - this.lastLagLogAt > 5000) {
+                    console.log(`Lagging by ${lag} ledgers (tx ledger ${txLedger}, latest ${this.lastLedger}).`)
+                    this.lastLagLogAt = now
+                }
+            }
         }
         for (const operation of tx.operations) {
             //create a notification
