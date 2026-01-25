@@ -1,9 +1,10 @@
 const StorageProvider = require('../storage-provider'),
     MongoUserProvider = require('./mongo-user-provider'),
     mongoose = require('mongoose'),
-    {ObjectId} = mongoose.Types
+    {ObjectId} = mongoose.Types,
+    logger = require('../../util/logger')
 
-mongoose.connection.on('error', e => console.error(e))
+mongoose.connection.on('error', e => logger.error(e))
 
 let connectionInitialized = false,
     Subscription,
@@ -82,14 +83,34 @@ class MongoDBStorageProvider extends StorageProvider {
     }
 
     updateLastIngestedTx(ingestedTxSequence) {
-        return TxIngestionCursor.updateOne({_id: 0},
-            {$set: {lastIngestedTx: ingestedTxSequence, updated: new Date()}},
-            {upsert: true})
+        // Using string for BigInt compatibility
+        const txSequence = String(ingestedTxSequence)
+        
+        return TxIngestionCursor.updateOne(
+            {_id: 0},
+            {$set: {lastIngestedTx: txSequence, updated: new Date()}},
+            {upsert: true}
+        ).catch(err => {
+            logger.error(`MongoDB: Error updating cursor: ${err.message}`)
+            throw err
+        })
     }
 
     getLastIngestedTx() {
         return TxIngestionCursor.findOne()
-            .then(pointer => pointer && pointer.lastIngestedTx)
+            .then(pointer => {
+                const result = pointer && pointer.lastIngestedTx
+                if (result) {
+                    logger.info(`MongoDB: Retrieved cursor: ${result.substring(0, 8)}...`)
+                } else {
+                    logger.info(`MongoDB: No cursor found`)
+                }
+                return result
+            })
+            .catch(err => {
+                logger.error(`MongoDB: Error retrieving cursor: ${err.message}`)
+                throw err
+            })
     }
 
     get userProvider() {

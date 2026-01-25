@@ -1,7 +1,8 @@
 const { Horizon } = require('@stellar/stellar-sdk'),
-    config = require('../models/config')
+    config = require('../models/config'),
+    logger = require('../util/logger')
 
-console.log(`Using Horizon server ${config.horizon}`)
+logger.info(`Using Horizon server ${config.horizon}`)
 
 module.exports = {
     /**

@@ -1,5 +1,5 @@
 # Use the official Node.js image
-FROM node:20
+FROM node:22
 
 # Set the working directory
 WORKDIR /app
@@ -14,8 +14,8 @@ RUN npm install
 COPY . .
 
 # Metadata for the container image
-ENV SERVICE_VERSION=0.5.4
-LABEL org.opencontainers.image.version="0.5.4"
+ENV SERVICE_VERSION=0.6.0
+LABEL org.opencontainers.image.version="0.6.0"
 
 # Expose the API port
 EXPOSE 4021

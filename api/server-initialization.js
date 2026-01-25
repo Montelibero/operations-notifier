@@ -2,7 +2,9 @@ const express = require('express'),
     bodyParser = require('body-parser'),
     cors = require('cors'),
     http = require('http'),
-    auth = require('./authorization-handler')
+    path = require('path'),
+    auth = require('./authorization-handler'),
+    logger = require('../util/logger')
 
 module.exports = function (config) {
     return new Promise((resolve, reject) => {
@@ -21,11 +23,15 @@ module.exports = function (config) {
         //allow CORS requests
         app.use(cors())
 
+        //serve static files from public directory
+        app.use(express.static(path.join(__dirname, '../public')))
+
         app.use(auth.userMiddleware)
 
         //register routes
         require('./observer-routes')(app)
         require('./user-routes')(app)
+        require('./admin-routes')(app)
 
         // error handler
         app.use((err, req, res, next) => {
@@ -56,7 +62,25 @@ module.exports = function (config) {
         server.listen(port, host, () => {
             let addr = server.address(),
                 bind = typeof addr === 'string' ? 'pipe ' + addr : 'port ' + addr.port
-            console.log('Listening on ' + bind)
+            
+            // Store server address info for access by routes
+            server.serverInfo = {
+                host: host || 'localhost',
+                port: port,
+                address: addr
+            }
+            
+            logger.info('Listening on ' + bind)
+            
+            // Log server address info
+            const serverAddress = typeof addr === 'string' ? addr : 
+                                 (host || addr.address === '::' ? 'localhost' : addr.address) + ':' + addr.port
+            logger.info(`💻 Server running at http://${serverAddress}`)
+            
+            if (config.adminUiEnabled) {
+                logger.info(`🚀 Admin UI: http://${serverAddress}/admin`)
+            }
+            
             server.app = app
             resolve(server)
         })

@@ -2,7 +2,8 @@ const errors = require('../util/errors'),
     TransactionWatcher = require('./transaction-watcher'),
     Notifier = require('./notifier'),
     storage = require('./storage'),
-    config = require('../models/config')
+    config = require('../models/config'),
+    logger = require('../util/logger')
 
 /**
  *
@@ -56,7 +57,7 @@ class Observer {
             })
             .then(newSubscription => {
                 this.subscriptions.push(newSubscription)
-                console.log(`Subscription created: id=${newSubscription.id} pubkey=${newSubscription.pubkey || 'anonymous'}`)
+                logger.info(`Subscription created: id=${newSubscription.id} pubkey=${newSubscription.pubkey || 'anonymous'}`)
                 return newSubscription
             })
     }
@@ -70,7 +71,7 @@ class Observer {
                     if (s.id == subscriptionId) { //intended non-strict comparision
                         s.status = 1
                         this.subscriptions.splice(i, 1)
-                        console.log(`Subscription removed: id=${s.id} pubkey=${s.pubkey || 'anonymous'}`)
+                        logger.info(`Subscription removed: id=${s.id} pubkey=${s.pubkey || 'anonymous'}`)
                         if (typeof s.save === 'function') return s.save()
                         return Promise.resolve(s)
                     }

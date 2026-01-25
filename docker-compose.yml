@@ -20,9 +20,13 @@ services:
       # HORIZON_ALLOW_HTTP: "false" # set true for local HTTP mocks
       # NETWORK_PASSPHRASE: "Public Global Stellar Network ; September 2015"
 
-      # Auth
+# Auth
       # ADMIN_AUTHENTICATION_TOKEN: "" # admin token (optional)
       # USER_TOKENS: "tokenA,tokenB,tokenC" # used in AUTHORIZATION=token mode
+      ADMIN_UI_ENABLED: "true" # enable web-based admin interface
+      
+      # Logging
+      LOG_LEVEL: "INFO" # DEBUG, INFO, WARN, ERROR
 
       # Limits & concurrency
       MAX_ACTIVE_SUBSCRIPTIONS: "10000"

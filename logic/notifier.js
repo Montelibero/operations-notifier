@@ -2,7 +2,8 @@ const axios = require('axios'),
     config = require('../models/config'),
     {signer} = require('../util/signer'),
     pkgInfo = require('../package'),
-    storage = require('./storage')
+    storage = require('./storage'),
+    logger = require('../util/logger')
 
 /**
  * Remove item from cache
@@ -100,7 +101,7 @@ class Notifier {
                 subscription.lost_notifications = 0
                 subscription.sent++
                 subscription.ignoreUntil = undefined
-                console.log(`POST to ${subscription.reaction_url}. Notification: ${notification.id}.`)
+                logger.info(`POST to ${subscription.reaction_url}. Notification: ${notification.id}.`)
             })
     }
 
