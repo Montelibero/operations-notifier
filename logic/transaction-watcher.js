@@ -142,6 +142,11 @@ class TransactionWatcher {
                 }
             })
             .catch(err => {
+                const delay = this.getRateLimitDelay(err)
+                if (delay !== null) {
+                    this.reconnectDelay = delay
+                    return setTimeout(() => this.trackTransactions(), delay)
+                }
                 console.error(err)
                 this.stopWatching()
             })
@@ -186,6 +191,13 @@ class TransactionWatcher {
             })
     }
 
+    getRateLimitDelay(err) {
+        if (!err || !err.response || err.response.status !== 429) return null
+        const reset = parseInt(err.response.headers && err.response.headers['x-ratelimit-reset'])
+        if (!isNaN(reset) && reset > 0) return reset * 1000
+        return 10000
+    }
+
     loadLedgerTransactions(sequence, txCursor) {
         return new Promise((resolve, reject) => {
             const fetchLedgerTxBatch = () => {
@@ -201,7 +213,14 @@ class TransactionWatcher {
                         if (fetchedCount < transactionsBatchSize) return resolve()
                         fetchLedgerTxBatch(lastTx.paging_token)
                     })
-                    .catch(e => reject(e))
+                    .catch(e => {
+                        const delay = this.getRateLimitDelay(e)
+                        if (delay !== null) {
+                            this.reconnectDelay = delay
+                            return setTimeout(fetchLedgerTxBatch, delay)
+                        }
+                        reject(e)
+                    })
             }
             fetchLedgerTxBatch(txCursor)
         })
