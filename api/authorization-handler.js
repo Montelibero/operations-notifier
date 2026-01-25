@@ -7,6 +7,21 @@ const config = require('../models/config'),
 
 const scheme = 'ed25519 '
 
+function getAuthToken(req) {
+    let token = req.headers['x-access-token'] || req.headers['authorization']
+    if (!token) return null
+    if (typeof token !== 'string') token = token.toString()
+    const lower = token.toLowerCase()
+    if (lower.startsWith(scheme)) {
+        token = token.slice(scheme.length, token.length)
+    } else if (lower.startsWith('token ')) {
+        token = token.slice('token '.length, token.length)
+    } else if (lower.startsWith('bearer ')) {
+        token = token.slice('bearer '.length, token.length)
+    }
+    return token
+}
+
 function getDefaultAdmin() {
     return {
         pubkey: null,
@@ -28,10 +43,7 @@ function userMiddleware(req, res, next) {
         req.user = getDefaultAdmin()
         return next()
     }
-    let token = req.headers['x-access-token'] || req.headers['authorization']
-    if (token && token.startsWith(scheme)) {
-        token = token.slice(scheme.length, token.length)
-    }
+    let token = getAuthToken(req)
 
     if (!token)
         return next()
@@ -40,21 +52,54 @@ function userMiddleware(req, res, next) {
         return next()
     }
 
+    if (config.authorization === 'token') {
+        const allowlist = Array.isArray(config.userTokens) ? config.userTokens : []
+        if (allowlist.length && !allowlist.includes(token)) {
+            return next(errors.unauthorized())
+        }
+        let userProvider = storage.provider.userProvider
+        return userProvider.getUserByPublicKey(token)
+            .then(user => {
+                if (user) return user
+                return userProvider.addUser({
+                    pubkey: token,
+                    roles: []
+                })
+                    .then(() => userProvider.getUserByPublicKey(token))
+            })
+            .then(user => {
+                if (user) {
+                    req.user = {
+                        pubkey: user.pubkey,
+                        roles: user.roles
+                    }
+                }
+            })
+            .then(next)
+            .catch(next)
+    }
+
     const [pubkey, signature] = token.split('.')
+    if (!pubkey || !signature) return next()
 
     let payload, nonce
+    const queryParams = req.query || {}
+    const bodyParams = req.body || {}
+    let params
     if (req.method === 'GET') {
-        nonce = Number(req.query.nonce)
-        payload = encodeUrlParams(req.query)
+        params = queryParams
+    } else if (req.method === 'DELETE') {
+        params = Object.keys(queryParams).length ? queryParams : bodyParams
     } else {
-        payload = encodeUrlParams(req.body)
-        nonce = Number(req.body.nonce)
+        params = bodyParams
     }
+    nonce = Number(params.nonce)
+    payload = encodeUrlParams(params)
 
     if (nonce && !isNaN(nonce) && payload) {
         if (verifySignature(pubkey, payload, signature)) {
             let userProvider = storage.provider.userProvider
-            userProvider.getUserByPublicKey(pubkey)
+            return userProvider.getUserByPublicKey(pubkey)
                 .then(user => {
                     if (user) return user
                     return userProvider.addUser({
@@ -64,7 +109,7 @@ function userMiddleware(req, res, next) {
                         .then(() => userProvider.getUserByPublicKey(pubkey))
                 })
                 .then(user => {
-                    if (user && user.nonce < nonce) {
+                    if (user && (!user.nonce || user.nonce < nonce)) {
                         return userProvider.updateNonce(user.id, nonce)
                             .then(res => {
                                 if (res)
@@ -78,6 +123,7 @@ function userMiddleware(req, res, next) {
                 .then(next)
         }
     }
+    return next()
 }
 
 function userRequiredMiddleware(req, res, next) {
@@ -94,10 +140,79 @@ function isInRoleMiddleware(role) {
     }
 }
 
+function nonceLookupMiddleware(req, res, next) {
+    if (!config.authorization || config.authorization === 'disabled') {
+        req.user = getDefaultAdmin()
+        return next()
+    }
+
+    let token = getAuthToken(req)
+    if (!token) return next(errors.unauthorized())
+
+    if (token === config.adminAuthenticationToken) {
+        req.user = getDefaultAdmin()
+        return next()
+    }
+
+    if (config.authorization === 'token') {
+        const allowlist = Array.isArray(config.userTokens) ? config.userTokens : []
+        if (allowlist.length && !allowlist.includes(token)) {
+            return next(errors.unauthorized())
+        }
+        let userProvider = storage.provider.userProvider
+        return userProvider.getUserByPublicKey(token)
+            .then(user => {
+                if (user) return user
+                return userProvider.addUser({
+                    pubkey: token,
+                    roles: []
+                })
+                    .then(() => userProvider.getUserByPublicKey(token))
+            })
+            .then(user => {
+                if (user) {
+                    req.user = {
+                        pubkey: user.pubkey,
+                        roles: user.roles
+                    }
+                }
+            })
+            .then(next)
+            .catch(next)
+    }
+
+    const [pubkey, signature] = token.split('.')
+    if (!pubkey || !signature) return next(errors.unauthorized())
+
+    const payload = `nonce:${pubkey}`
+    if (!verifySignature(pubkey, payload, signature)) return next(errors.unauthorized())
+
+    let userProvider = storage.provider.userProvider
+    userProvider.getUserByPublicKey(pubkey)
+        .then(user => {
+            if (user) return user
+            return userProvider.addUser({
+                pubkey,
+                roles: []
+            }).then(() => userProvider.getUserByPublicKey(pubkey))
+        })
+        .then(user => {
+            if (user) {
+                req.user = {
+                    pubkey: user.pubkey,
+                    roles: user.roles
+                }
+            }
+        })
+        .then(next)
+        .catch(next)
+}
+
 module.exports = {
     userMiddleware,
     userRequiredMiddleware,
     isInRoleMiddleware,
+    nonceLookupMiddleware,
     canEdit,
     isInRole
 }

@@ -11,9 +11,26 @@ function notImplementedError(req, res) {
 
 module.exports = function (app) {
 
+    //get current nonce for authenticated user (nonceless auth)
+    app.get('/api/nonce', auth.nonceLookupMiddleware, (req, res, next) => {
+        const isAdmin = auth.isInRole(req, roles.ADMIN)
+        const pubkey = isAdmin && req.query.pubkey ? req.query.pubkey : (req.user && req.user.pubkey)
+        if (!pubkey) return next(errors.unauthorized())
+
+        storage.provider.userProvider.getUserByPublicKey(pubkey)
+            .catch(e => next(e))
+            .then(user => {
+                if (!user) return res.status(404).json({ error: 'User not found' })
+                res.json({ pubkey: user.pubkey, nonce: user.nonce || 0 })
+            })
+    })
+
     //register new user (admin action)
     app.post('/api/user', [auth.userRequiredMiddleware, auth.isInRoleMiddleware(roles.ADMIN)], (req, res, next) => {
         let user = req.body
+        if (!user.pubkey && user.token) {
+            user.pubkey = user.token
+        }
         storage.provider.userProvider.addUser(user)
             .catch(e => next(e))
             .then(() => res.end())

@@ -68,7 +68,8 @@ class Observer {
                         s.status = 1
                         this.subscriptions.splice(i, 1)
                         console.log(`Subscription removed: id=${s.id} pubkey=${s.pubkey || 'anonymous'}`)
-                        return s.save()
+                        if (typeof s.save === 'function') return s.save()
+                        return Promise.resolve(s)
                     }
                 }
 

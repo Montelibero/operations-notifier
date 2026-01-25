@@ -1,9 +1,11 @@
-0.5.1 / 2026-01-24
+0.5.3 / 2026-01-25
 ==================
 
 * Add lost-notification handling with auto-drop and auto-disable thresholds.
 * Add status metric for lost notifications.
 * Allow HTTP Horizon in local/test environments via config flag.
+* Add network passphrase configuration and nonce lookup endpoint.
+* Add token auth mode, user token allowlist, and subscription delete ownership checks.
 * Add Docker image version metadata and bump package version.
 
 0.4.4 /2020-03-17

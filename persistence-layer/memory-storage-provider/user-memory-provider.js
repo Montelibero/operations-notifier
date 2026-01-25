@@ -41,10 +41,11 @@ class MemoryUserProvider extends UserProvider {
     }
 
     updateNonce(id, nonce) {
-        const user = this.getUserById(id)
-        if (!user) return Promise.resolve(false)
-        user.nonce = nonce
-        return Promise.resolve(true)
+        return this.getUserById(id).then(user => {
+            if (!user) return false
+            user.nonce = nonce
+            return true
+        })
     }
 
     deleteAllUsers() {

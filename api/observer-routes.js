@@ -4,7 +4,8 @@ const pkgInfo = require('../package'),
     storage = require('../logic/storage'),
     {elapsed} = require('../util/elapsed-time'),
     auth = require('./authorization-handler'),
-    roles = require('../models/user/roles')
+    roles = require('../models/user/roles'),
+    errors = require('../util/errors')
 
 function processResponse(promiseOrData, res) {
     if (!(promiseOrData instanceof Promise)) promiseOrData = Promise.resolve(promiseOrData)
@@ -89,9 +90,18 @@ module.exports = function (app) {
     })
 
     //unsubscribe
-    app.delete('/api/subscription/:id', auth.userRequiredMiddleware, (req, res) => {
-        observer.unsubscribe(req.params.id)
+    app.delete('/api/subscription/:id', auth.userRequiredMiddleware, (req, res, next) => {
+        observer.getSubscription(req.params.id)
+            .then(subscription => {
+                if (!subscription) throw errors.notFound()
+                if (!subscription.pubkey && !auth.isInRole(req, roles.ADMIN))
+                    throw errors.forbidden()
+                if (subscription.pubkey && !auth.canEdit(req, subscription.pubkey))
+                    throw errors.forbidden()
+                return observer.unsubscribe(req.params.id)
+            })
             .then(() => res.status(200).end())
+            .catch(next)
     })
 
     //block modifications

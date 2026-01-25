@@ -13,6 +13,8 @@ function parseEnv(key) {
             value = parseInt(value)
         } else if (typeof defaultValue === 'boolean') {
             value = value === 'true' || value === '1'
+        } else if (Array.isArray(defaultValue)) {
+            value = value.split(',').map(v => v.trim()).filter(Boolean)
         }
         config[path] = value
     }
@@ -26,6 +28,7 @@ parseEnv('API_HOST')
 parseEnv('HORIZON')
 parseEnv('NETWORK_PASSPHRASE')
 parseEnv('HORIZON_ALLOW_HTTP')
+parseEnv('USER_TOKENS')
 parseEnv('SIGNATURE_SECRET')
 parseEnv('MAX_ACTIVE_SUBSCRIPTIONS')
 parseEnv('MAX_ACTIVE_SUBSCRIPTIONS_PER_USER')

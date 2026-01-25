@@ -153,6 +153,11 @@ Env parameter: `AUTHORIZATION`
 API authentication token for admin user. Leave empty to disable admin token auth.\
 Default Value: `""`.\
 Env parameter: `ADMIN_AUTHENTICATION_TOKEN`
+- **userTokens**\
+List of allowed user tokens for `authorization: "token"` mode. If empty, any
+token is accepted.\
+Default value: `[]`.\
+Env parameter: `USER_TOKENS` (comma-separated)
 - **signatureSecret**\
 Secret key used to sign the notifications. Do not forget to set your own secret. 
 It can be easily generated using [Stellar Laboratory](https://www.stellar.org/laboratory/#account-creator?network=test). 
@@ -219,6 +224,7 @@ Other storage providers can be easily connected through the standard interface.
   "maxNotificationAgeSeconds": 604800,
   "maxConsecutiveLostNotifications": 10,
   "reactionResponseTimeout": 20,
+  "userTokens": [],
   "adminAuthenticationToken": "98c12910bf35c79a800e9ea893a93b078ea92fc7a26ca76c0cd2f6003464d781"
 }
 ```
@@ -238,16 +244,27 @@ With `authorization` config parameter set to `disabled`, there is no need to
 bother about authentication. But it only works when the service is not exposed
 to public networks (i.e. behind the firewall).
 
-To enable ed25519 authentication, set `authorization` to any value other than
-`disabled` (for example, `enabled` or `token`). In this mode, any interaction with
-API requires an authorization header `Authorization: ed25519 <public_key>.<signature>`
-(or `X-Access-Token`), where `public_key` is an ed25519 public key and
-`signature` is a cryptographic signature of urlencoded request params serialized
-in hex format. All requests to API endpoints must contain a `nonce` param and the
-value should be greater than the previously used nonce for this public key.
+Authentication modes:
 
-Admin requests can use `Authorization: <ADMIN_AUTHENTICATION_TOKEN>` instead of
-ed25519 signatures.
+- `authorization: "disabled"` — no auth checks (local/dev only).
+- `authorization: "ed25519"` or any truthy value except `"token"` — ed25519 signatures with nonce.
+- `authorization: "token"` — simple per-user token auth (no nonce/signatures).
+
+**ed25519 mode**
+
+All requests must include `Authorization: ed25519 <public_key>.<signature>` (or
+`X-Access-Token`). The signature is computed over urlencoded request params
+serialized in hex format. All requests must include a `nonce` param that is
+greater than the previously used nonce for this public key.
+
+**token mode**
+
+All requests must include `Authorization: <user_token>` (or `X-Access-Token`).
+The token identifies the user; changing the token gives you a new empty account.
+
+To restrict tokens, set `userTokens` (or `USER_TOKENS=token1,token2,token3`).
+
+Admin requests can use `Authorization: <ADMIN_AUTHENTICATION_TOKEN>` in any mode.
 
 ### Status
 
@@ -286,6 +303,26 @@ ed25519 signatures.
     "inProgress": 1
   }
 }
+```
+
+#### Nonce lookup (ed25519 mode)
+
+```
+GET /api/nonce
+```
+
+Returns the current nonce for the authenticated public key.
+Sign the static payload `nonce:<public_key>` and send it as:
+
+```
+Authorization: ed25519 <public_key>.<signature>
+```
+
+Admin requests can query another user:
+
+```
+GET /api/nonce?pubkey=<public_key>
+Authorization: <ADMIN_AUTHENTICATION_TOKEN>
 ```
 
 ##### Example

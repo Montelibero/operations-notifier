@@ -150,6 +150,38 @@ describe('API', function () {
                 expect(res.data.id).to.be.eql(ownSubs.id)
             })
         })
+
+        describe('/DELETE subscription', () => {
+            it('it should forbid deleting another user subscription', async () => {
+                const payload = encodeUrlParams({ nonce: Date.now() })
+                const signature = signData(newUserKeyPair, payload)
+                const anothersSubs = subscriptions.find(s => s.pubkey !== newUserKeyPair.publicKey())
+                try {
+                    await axiosInstance.delete(`/api/subscription/${anothersSubs.id}?${payload}`, {
+                        headers: {
+                            authorization: `${newUserKeyPair.publicKey()}.${signature}`
+                        }
+                    })
+                } catch (err) {
+                    expect(err.response.status).to.equal(403)
+                }
+            })
+        })
+
+        describe('/GET nonce', () => {
+            it('it should GET nonce without providing nonce param', async () => {
+                const payload = `nonce:${newUserKeyPair.publicKey()}`
+                const signature = signData(newUserKeyPair, payload)
+                const res = await axiosInstance.get('/api/nonce', {
+                    headers: {
+                        authorization: `${newUserKeyPair.publicKey()}.${signature}`
+                    }
+                })
+                expect(res.status).to.equal(200)
+                expect(res.data.pubkey).to.equal(newUserKeyPair.publicKey())
+                expect(res.data.nonce).to.be.a('number')
+            })
+        })
     })
 
     describe('Users API', () => {
@@ -258,6 +290,86 @@ describe('API', function () {
                 })
                 expect(res.status).to.equal(200)
             })
+        })
+    })
+
+    describe('Token auth', () => {
+        const tokenA = 'tokenA'
+        const tokenB = 'tokenB'
+        const tokenC = 'tokenC'
+        let tokenASub
+        let tokenBSub
+
+        before(async function () {
+            config.authorization = 'token'
+            config.userTokens = [tokenA, tokenB]
+            await storage.provider.userProvider.deleteAllUsers()
+            await storage.provider.removeAllSubscriptions()
+            observer.subscriptions = []
+        })
+
+        it('it should reject tokens not in allowlist', async () => {
+            const data = {
+                reaction_url: 'http://fake.url/reaction',
+                operation_types: [0]
+            }
+            try {
+                await axiosInstance.post('/api/subscription', data, {
+                    headers: { authorization: tokenC }
+                })
+            } catch (err) {
+                expect(err.response.status).to.equal(401)
+            }
+        })
+
+        it('it should create subscriptions for token users', async () => {
+            const dataA = {
+                reaction_url: 'http://fake.url/reactionA',
+                operation_types: [0]
+            }
+            const dataB = {
+                reaction_url: 'http://fake.url/reactionB',
+                operation_types: [1]
+            }
+
+            const resA = await axiosInstance.post('/api/subscription', dataA, {
+                headers: { authorization: tokenA }
+            })
+            const resB = await axiosInstance.post('/api/subscription', dataB, {
+                headers: { authorization: tokenB }
+            })
+
+            expect(resA.status).to.equal(200)
+            expect(resB.status).to.equal(200)
+            tokenASub = resA.data
+            tokenBSub = resB.data
+        })
+
+        it('it should list only own subscriptions for token user', async () => {
+            const res = await axiosInstance.get('/api/subscription', {
+                headers: { authorization: tokenA }
+            })
+            expect(res.status).to.equal(200)
+            expect(res.data).to.be.an('array')
+            expect(res.data.length).to.equal(1)
+            expect(res.data[0].id).to.equal(tokenASub.id)
+        })
+
+        it('it should forbid deleting another token user subscription', async () => {
+            try {
+                await axiosInstance.delete(`/api/subscription/${tokenBSub.id}`, {
+                    headers: { authorization: tokenA }
+                })
+            } catch (err) {
+                expect(err.response.status).to.equal(403)
+            }
+        })
+
+        it('it should delete own subscription', async () => {
+            const res = await axiosInstance.delete(`/api/subscription/${tokenASub.id}`, {
+                headers: { authorization: tokenA }
+            })
+            expect(res.status).to.equal(200)
         })
     })
 })
