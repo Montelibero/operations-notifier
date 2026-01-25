@@ -322,6 +322,27 @@ describe('API', function () {
             }
         })
 
+        it('it should accept a single allowed token and reject others', async () => {
+            const previous = config.userTokens
+            config.userTokens = [tokenA]
+            try {
+                const res = await axiosInstance.get('/api/subscription', {
+                    headers: { authorization: tokenA }
+                })
+                expect(res.status).to.equal(200)
+
+                try {
+                    await axiosInstance.get('/api/subscription', {
+                        headers: { authorization: tokenB }
+                    })
+                } catch (err) {
+                    expect(err.response.status).to.equal(401)
+                }
+            } finally {
+                config.userTokens = previous
+            }
+        })
+
         it('it should create subscriptions for token users', async () => {
             const dataA = {
                 reaction_url: 'http://fake.url/reactionA',
