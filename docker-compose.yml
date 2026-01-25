@@ -1,0 +1,58 @@
+version: "3.8"
+
+services:
+  operations-notifier:
+    image: stellar_notifier:latest
+    container_name: operations_notifier
+    ports:
+      - "4021:4021"
+    restart: unless-stopped
+    environment:
+      # Core config
+      AUTHORIZATION: "disabled" # disabled | token | ed25519
+      STORAGE_PROVIDER: "mongodb" # memory | mongodb
+      STORAGE_CONNECTION_STRING: "mongodb://operations_notifier_mongo:27017/notifier"
+      API_PORT: "4021"
+      # API_HOST: "127.0.0.1" # bind host (optional)
+
+      # Horizon
+      HORIZON: "https://horizon.stellar.org"
+      # HORIZON_ALLOW_HTTP: "false" # set true for local HTTP mocks
+      # NETWORK_PASSPHRASE: "Public Global Stellar Network ; September 2015"
+
+      # Auth
+      # ADMIN_AUTHENTICATION_TOKEN: "" # admin token (optional)
+      # USER_TOKENS: "tokenA,tokenB,tokenC" # used in AUTHORIZATION=token mode
+
+      # Limits & concurrency
+      MAX_ACTIVE_SUBSCRIPTIONS: "10000"
+      MAX_ACTIVE_SUBSCRIPTIONS_PER_USER: "100"
+      NOTIFICATION_CONCURRENCY: "100"
+      REACTION_RESPONSE_TIMEOUT: "20"
+
+      # Lost notification handling
+      MAX_DELIVERY_FAILURES: "100"
+      MAX_NOTIFICATION_AGE_SECONDS: "604800"
+      MAX_CONSECUTIVE_LOST_NOTIFICATIONS: "10"
+
+      # Notification signing
+      # SIGNATURE_SECRET: "" # ED25519 secret key for webhook signatures
+
+    # Optional: mount local config file instead of env vars
+    # volumes:
+    #   - ./app.config.json:/app/app.config.json:ro
+
+    depends_on:
+      - mongodb
+
+  mongodb:
+    image: mongo:7
+    container_name: operations_notifier_mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+volumes:
+  mongo_data:
