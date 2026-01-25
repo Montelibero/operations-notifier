@@ -1,3 +1,12 @@
+0.6.0 / 2026-01-25
+==================
+
+* Added web-based admin interface for subscription management and monitoring.
+* Added admin UI configuration (`adminUiEnabled` / `ADMIN_UI_ENABLED`).
+* Enhanced server initialization to serve static files.
+* Implemented auto-detection of server address in admin UI.
+* Updated documentation with admin UI usage information.
+
 0.5.4 / 2026-01-25
 ==================
 

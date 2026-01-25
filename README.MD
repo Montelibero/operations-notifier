@@ -19,6 +19,7 @@ transaction after restart).
 - Does not require Stellar Core or Horizon node deployment.
 - Notifications are signed with an ED25519 secret key to protect the recipient
 from spoofing.
+- Web-based admin interface for subscription management and system monitoring.
 
 ### So... Where can I use it?
 
@@ -195,6 +196,11 @@ Maximum consecutive lost notifications for a subscription before it is
 automatically removed.\
 Default value: `10`.\
 Env parameter: `MAX_CONSECUTIVE_LOST_NOTIFICATIONS`
+
+- **logLevel**\
+Log verbosity level (DEBUG, INFO, WARN, ERROR).\
+Default value: `"INFO"`.\
+Env parameter: `LOG_LEVEL`
 
 Lost notifications are dropped when they exceed the max age or max consecutive
 delivery failures. The lost counter resets to 0 after a successful delivery.
@@ -489,6 +495,40 @@ Each subscription object may include:
 - `lost_notifications` — consecutive lost notifications (resets on success)
 - `sent` — delivered notifications count
 - `created` / `updated` — timestamps
+
+## Admin UI
+
+The service includes a web-based admin interface for easy subscription management and system monitoring.
+
+### Access the Admin UI
+
+The admin UI is accessible at:
+```
+http://your-server:4021/admin
+```
+
+The admin interface will load without authentication, allowing you to enter your admin token in the web interface. Authentication to the API happens when you:
+
+1. Enter your admin token in the settings panel
+2. Save the configuration
+
+Your token is stored securely in the browser's local storage for future sessions.
+
+### Admin UI Features
+
+- System status monitoring (uptime, subscriptions count, ledger status)
+- Create, view and delete subscriptions
+- Real-time API logs
+- Automatic server address detection
+
+### Admin UI Configuration
+
+The admin UI is enabled by default. You can control it with the following configuration:
+
+- `adminUiEnabled` in `app.config.json` (default: `true`)
+- or `ADMIN_UI_ENABLED` environment variable
+
+The admin interface uses the existing `adminAuthenticationToken` for access control.
 
 ## Notifications Format
 
