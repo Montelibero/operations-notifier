@@ -3,6 +3,10 @@ const {TransactionBuilder, xdr, StrKey} = require('@stellar/stellar-sdk'),
     {parseAsset, nativeAsset} = require('../util/asset-helper'),
     config = require('../models/config')
 
+function stroopsToAmount(stroops) {
+    return new BigNumber(stroops).dividedBy(10000000).toFixed(7)
+}
+
 function normalizeAsset(asset) {
     if (!asset) return null
     return parseAsset({
@@ -69,9 +73,9 @@ function parsePathPaymentTrades(resultXdr, operationIndex) {
                     seller_id: StrKey.encodeEd25519PublicKey(ob.sellerId().ed25519()),
                     offer_id: ob.offerId().toString(),
                     asset_sold: normalizeXdrAsset(ob.assetSold()),
-                    amount_sold: ob.amountSold().toString(),
+                    amount_sold: stroopsToAmount(ob.amountSold().toString()),
                     asset_bought: normalizeXdrAsset(ob.assetBought()),
-                    amount_bought: ob.amountBought().toString()
+                    amount_bought: stroopsToAmount(ob.amountBought().toString())
                 }
             } else if (type === 'claimAtomTypeLiquidityPool') {
                 const lp = claim.liquidityPool()
@@ -79,9 +83,9 @@ function parsePathPaymentTrades(resultXdr, operationIndex) {
                     type: 'liquidity_pool',
                     pool_id: lp.liquidityPoolId().toString('hex'),
                     asset_sold: normalizeXdrAsset(lp.assetSold()),
-                    amount_sold: lp.amountSold().toString(),
+                    amount_sold: stroopsToAmount(lp.amountSold().toString()),
                     asset_bought: normalizeXdrAsset(lp.assetBought()),
-                    amount_bought: lp.amountBought().toString()
+                    amount_bought: stroopsToAmount(lp.amountBought().toString())
                 }
             }
             return null

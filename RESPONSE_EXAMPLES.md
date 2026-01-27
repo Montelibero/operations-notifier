@@ -111,8 +111,8 @@
     "id": "261832532194631681",
     "account": "GDHAJO6CSLXVK4XDQ7MPG2CEI4GCAPLHDXTRRWG5SOEHLGDLZSBVMAUK",
     "trades": [
-      { "type": "order_book", "seller_id": "GAGWF3VFKPC7EUNYHE6UX5OZODILTCDLK4J24BBY7KT5B25QRXRUZUPL", "offer_id": "1820871911", "asset_sold": { "asset_type": 1, "asset_code": "SHX", "asset_issuer": "GDSTRSHXHGJ7ZIVRBXEYE5Q74XUVCUSEKEBR7UCHEUUEK72N7I7KJ6JH" }, "amount_sold": "183626770", "asset_bought": { "asset_type": 0 }, "amount_bought": "7095890" },
-      { "type": "liquidity_pool", "pool_id": "dab2cc28955e5ad39d519f592ad75b54ee5b8ec93b5f24a6d80c04e92177ddc7", "asset_sold": { "asset_type": 2, "asset_code": "TREAD", "asset_issuer": "GANMKTF7SVYEHZ4CTLRKT2MG2OUJNDEA3JGZGTUTHQZOZSWJHHUF6VLM" }, "amount_sold": "1716083", "asset_bought": { "asset_type": 1, "asset_code": "SHX", "asset_issuer": "GDSTRSHXHGJ7ZIVRBXEYE5Q74XUVCUSEKEBR7UCHEUUEK72N7I7KJ6JH" }, "amount_bought": "183626770" }
+      { "type": "order_book", "seller_id": "GAGWF3VFKPC7EUNYHE6UX5OZODILTCDLK4J24BBY7KT5B25QRXRUZUPL", "offer_id": "1820871911", "asset_sold": { "asset_type": 1, "asset_code": "SHX", "asset_issuer": "GDSTRSHXHGJ7ZIVRBXEYE5Q74XUVCUSEKEBR7UCHEUUEK72N7I7KJ6JH" }, "amount_sold": "18.3626770", "asset_bought": { "asset_type": 0 }, "amount_bought": "0.7095890" },
+      { "type": "liquidity_pool", "pool_id": "dab2cc28955e5ad39d519f592ad75b54ee5b8ec93b5f24a6d80c04e92177ddc7", "asset_sold": { "asset_type": 2, "asset_code": "TREAD", "asset_issuer": "GANMKTF7SVYEHZ4CTLRKT2MG2OUJNDEA3JGZGTUTHQZOZSWJHHUF6VLM" }, "amount_sold": "0.1716083", "asset_bought": { "asset_type": 1, "asset_code": "SHX", "asset_issuer": "GDSTRSHXHGJ7ZIVRBXEYE5Q74XUVCUSEKEBR7UCHEUUEK72N7I7KJ6JH" }, "amount_bought": "18.3626770" }
     ]
   },
   "transaction": {
@@ -400,8 +400,8 @@
     "id": "261832540782866433",
     "account": "GCEX3EVHOJ6DOA7VD52G3D4PVI4CRQ4VEOKBMIXCCX7GBP373PIGFW3W",
     "trades": [
-      { "type": "order_book", "seller_id": "GDGW6W4ZK5JDHZIN3RAYI3MJVPHFHOGENL3TP2AGX7LO6LIH6CI7PYNF", "offer_id": "1820872937", "asset_sold": { "asset_type": 0 }, "amount_sold": "12395854", "asset_bought": { "asset_type": 1, "asset_code": "USDC", "asset_issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN" }, "amount_bought": "2535814" },
-      { "type": "order_book", "seller_id": "GAUAMW6HXP6NM6FYEMSB3AWIPNJ6OFOVTQTV4FAFDNHBJXV5NHN6HJTV", "offer_id": "1820872949", "asset_sold": { "asset_type": 0 }, "amount_sold": "733230979", "asset_bought": { "asset_type": 1, "asset_code": "USDC", "asset_issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN" }, "amount_bought": "149999999" }
+      { "type": "order_book", "seller_id": "GDGW6W4ZK5JDHZIN3RAYI3MJVPHFHOGENL3TP2AGX7LO6LIH6CI7PYNF", "offer_id": "1820872937", "asset_sold": { "asset_type": 0 }, "amount_sold": "1.2395854", "asset_bought": { "asset_type": 1, "asset_code": "USDC", "asset_issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN" }, "amount_bought": "0.2535814" },
+      { "type": "order_book", "seller_id": "GAUAMW6HXP6NM6FYEMSB3AWIPNJ6OFOVTQTV4FAFDNHBJXV5NHN6HJTV", "offer_id": "1820872949", "asset_sold": { "asset_type": 0 }, "amount_sold": "73.3230979", "asset_bought": { "asset_type": 1, "asset_code": "USDC", "asset_issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN" }, "amount_bought": "14.9999999" }
     ]
   },
   "transaction": {
