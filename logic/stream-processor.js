@@ -1,4 +1,4 @@
-const {TransactionBuilder} = require('@stellar/stellar-sdk'),
+const {TransactionBuilder, xdr, StrKey} = require('@stellar/stellar-sdk'),
     BigNumber = require('bignumber.js'),
     {parseAsset, nativeAsset} = require('../util/asset-helper'),
     config = require('../models/config')
@@ -9,6 +9,59 @@ function normalizeAsset(asset) {
         asset_code: asset.code,
         asset_issuer: asset.issuer
     })
+}
+
+/**
+ * Parse trades (ClaimAtom) from path_payment result XDR.
+ * @param {string} resultXdr - Base64-encoded transaction result XDR
+ * @param {number} operationIndex - Index of the operation in the transaction
+ * @returns {Array} Array of parsed trades
+ */
+function parsePathPaymentTrades(resultXdr, operationIndex) {
+    try {
+        const result = xdr.TransactionResult.fromXDR(resultXdr, 'base64')
+        const opResults = result.result().results()
+        if (!opResults || operationIndex >= opResults.length) return []
+
+        const opResult = opResults[operationIndex]
+        const tr = opResult?.tr?.()
+        if (!tr) return []
+
+        const opType = tr.switch().name
+        if (opType !== 'pathPaymentStrictSend' && opType !== 'pathPaymentStrictReceive') return []
+
+        const inner = tr.value()
+        if (!inner?.success) return []
+
+        const success = inner.success()
+        const offers = success?.offers?.() || []
+
+        return offers.map(claim => {
+            const type = claim.switch().name
+            if (type === 'claimAtomTypeOrderBook') {
+                const ob = claim.orderBook()
+                return {
+                    type: 'order_book',
+                    seller_id: StrKey.encodeEd25519PublicKey(ob.sellerId().ed25519()),
+                    offer_id: ob.offerId().toString(),
+                    amount_sold: ob.amountSold().toString(),
+                    amount_bought: ob.amountBought().toString()
+                }
+            } else if (type === 'claimAtomTypeLiquidityPool') {
+                const lp = claim.liquidityPool()
+                return {
+                    type: 'liquidity_pool',
+                    pool_id: lp.liquidityPoolId().toString('hex'),
+                    amount_sold: lp.amountSold().toString(),
+                    amount_bought: lp.amountBought().toString()
+                }
+            }
+            return null
+        }).filter(Boolean)
+    } catch (e) {
+        console.error('Failed to parse path payment trades:', e.message)
+        return []
+    }
 }
 
 /**
@@ -263,6 +316,12 @@ function processOperation(operation, txDetails, applicationOrder) {
     normalized.id = new BigNumber(txDetails.paging_token).plus(new BigNumber(applicationOrder + 1)).toString()
     normalized.account = normalized.account || operation.source || txDetails.source
     normalized.transaction_details = txDetails
+
+    // Parse trades from result_xdr for path_payment operations
+    if ((normalized.type === 'path_payment_strict_send' || normalized.type === 'path_payment_strict_receive') && txDetails.result_xdr) {
+        normalized.trades = parsePathPaymentTrades(txDetails.result_xdr, applicationOrder)
+    }
+
     return normalized
 }
 
@@ -317,7 +376,8 @@ function parseTransaction(transaction) {
         paging_token: transaction.paging_token,
         source_account_sequence: transaction.source_account_sequence,
         created_at: transaction.created_at,
-        memo: processMemo(xdrTx.memo)
+        memo: processMemo(xdrTx.memo),
+        result_xdr: transaction.result_xdr
     }
 
     if (xdrTx.timeBounds) {
@@ -336,5 +396,6 @@ function parseTransaction(transaction) {
 }
 
 module.exports = {
-    parseTransaction
+    parseTransaction,
+    parsePathPaymentTrades
 }

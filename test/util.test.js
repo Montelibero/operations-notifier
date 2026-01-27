@@ -1,6 +1,7 @@
 const { isValidAsset, parseAsset } = require('../util/asset-helper')
 const { elapsed } = require('../util/elapsed-time')
 const { verifySignature, signer } = require('../util/signer')
+const { matches } = require('../util/subscription-match-helper')
 
 describe('assetHelper.isValidAsset', function () {
     it('signs the data', function () {
@@ -187,5 +188,178 @@ describe('signer.sign', function () {
             signature = signer.sign(data, 'utf8', 'base64')
         expect(signature.length).to.equal(88)
         expect(verifySignature(signer.getPublicKey(), data, signature, 'utf8', 'base64')).to.be.true
+    })
+})
+
+describe('subscriptionMatchHelper.matches', function () {
+    const testAccount = 'GTEST1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ12345678901234'
+
+    it('matches when operation.account equals subscription.account', function () {
+        const subscription = { account: testAccount }
+        const operation = { account: testAccount, type_i: 1 }
+        expect(matches(subscription, operation)).to.be.true
+    })
+
+    it('matches when operation.destination equals subscription.account', function () {
+        const subscription = { account: testAccount }
+        const operation = { account: 'GOTHER', destination: testAccount, type_i: 1 }
+        expect(matches(subscription, operation)).to.be.true
+    })
+
+    it('does not match when account and destination differ from subscription', function () {
+        const subscription = { account: testAccount }
+        const operation = { account: 'GOTHER', destination: 'GANOTHER', type_i: 1 }
+        expect(matches(subscription, operation)).to.be.false
+    })
+
+    it('matches manage_data when value (string) equals subscription.account', function () {
+        const subscription = { account: testAccount }
+        const operation = { account: 'GOTHER', type_i: 10, value: testAccount }
+        expect(matches(subscription, operation)).to.be.true
+    })
+
+    it('matches manage_data when value (Buffer) equals subscription.account', function () {
+        const subscription = { account: testAccount }
+        const operation = { account: 'GOTHER', type_i: 10, value: Buffer.from(testAccount, 'utf8') }
+        expect(matches(subscription, operation)).to.be.true
+    })
+
+    it('does not match manage_data when value differs from subscription.account', function () {
+        const subscription = { account: testAccount }
+        const operation = { account: 'GOTHER', type_i: 10, value: 'some_other_value' }
+        expect(matches(subscription, operation)).to.be.false
+    })
+
+    it('does not match manage_data without value when account/destination differ', function () {
+        const subscription = { account: testAccount }
+        const operation = { account: 'GOTHER', type_i: 10, name: 'test_key' }
+        expect(matches(subscription, operation)).to.be.false
+    })
+
+    it('matches when no account filter in subscription', function () {
+        const subscription = {}
+        const operation = { account: 'GANY', type_i: 1 }
+        expect(matches(subscription, operation)).to.be.true
+    })
+
+    it('filters by operation_types', function () {
+        const subscription = { operation_types: [1, 2] }
+        expect(matches(subscription, { type_i: 1 })).to.be.true
+        expect(matches(subscription, { type_i: 3 })).to.be.false
+    })
+
+    it('filters by memo', function () {
+        const subscription = { memo: '12345' }
+        expect(matches(subscription, { memo: '12345' })).to.be.true
+        expect(matches(subscription, { memo: 12345 })).to.be.true // type casting
+        expect(matches(subscription, { memo: '99999' })).to.be.false
+    })
+
+    describe('path_payment trades matching', function () {
+        const sellerAccount = 'GAKKEOZP54PTYUX2UV3DC6NSFVKFXIINXUUGDLDKFFLSQC6QHIKY74IC'
+
+        it('matches path_payment when trades contain subscription.account as seller_id', function () {
+            const subscription = { account: sellerAccount }
+            const operation = {
+                account: 'GSOURCE123',
+                destination: 'GDEST456',
+                type_i: 13, // path_payment_strict_send
+                trades: [
+                    {
+                        type: 'order_book',
+                        seller_id: 'GOTHER111',
+                        offer_id: '123',
+                        amount_sold: '1000',
+                        amount_bought: '500'
+                    },
+                    {
+                        type: 'order_book',
+                        seller_id: sellerAccount,
+                        offer_id: '456',
+                        amount_sold: '500',
+                        amount_bought: '250'
+                    }
+                ]
+            }
+            expect(matches(subscription, operation)).to.be.true
+        })
+
+        it('does not match path_payment when trades do not contain subscription.account', function () {
+            const subscription = { account: sellerAccount }
+            const operation = {
+                account: 'GSOURCE123',
+                destination: 'GDEST456',
+                type_i: 13,
+                trades: [
+                    {
+                        type: 'order_book',
+                        seller_id: 'GOTHER111',
+                        offer_id: '123',
+                        amount_sold: '1000',
+                        amount_bought: '500'
+                    }
+                ]
+            }
+            expect(matches(subscription, operation)).to.be.false
+        })
+
+        it('does not match path_payment with empty trades array', function () {
+            const subscription = { account: sellerAccount }
+            const operation = {
+                account: 'GSOURCE123',
+                destination: 'GDEST456',
+                type_i: 13,
+                trades: []
+            }
+            expect(matches(subscription, operation)).to.be.false
+        })
+
+        it('matches path_payment_strict_receive with seller in trades', function () {
+            const subscription = { account: sellerAccount }
+            const operation = {
+                account: 'GSOURCE123',
+                destination: 'GDEST456',
+                type_i: 2, // path_payment_strict_receive
+                trades: [
+                    {
+                        type: 'order_book',
+                        seller_id: sellerAccount,
+                        offer_id: '789',
+                        amount_sold: '2000',
+                        amount_bought: '1000'
+                    }
+                ]
+            }
+            expect(matches(subscription, operation)).to.be.true
+        })
+
+        it('still matches when subscription.account is source or destination', function () {
+            const subscription = { account: sellerAccount }
+            const operation = {
+                account: sellerAccount,
+                destination: 'GDEST456',
+                type_i: 13,
+                trades: []
+            }
+            expect(matches(subscription, operation)).to.be.true
+        })
+
+        it('ignores liquidity_pool trades (no seller_id)', function () {
+            const subscription = { account: sellerAccount }
+            const operation = {
+                account: 'GSOURCE123',
+                destination: 'GDEST456',
+                type_i: 13,
+                trades: [
+                    {
+                        type: 'liquidity_pool',
+                        pool_id: '5c27abcd',
+                        amount_sold: '1000',
+                        amount_bought: '500'
+                    }
+                ]
+            }
+            expect(matches(subscription, operation)).to.be.false
+        })
     })
 })

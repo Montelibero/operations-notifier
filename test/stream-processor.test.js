@@ -1,7 +1,7 @@
 const expect = require('chai').expect;
 const sinon = require('sinon');
 const { TransactionBuilder } = require('@stellar/stellar-sdk');
-const { parseTransaction } = require('../logic/stream-processor');
+const { parseTransaction, parsePathPaymentTrades } = require('../logic/stream-processor');
 
 describe('stream-processor', function () {
     afterEach(() => {
@@ -146,5 +146,64 @@ describe('stream-processor', function () {
         const tx = createTxMock(operation);
         const parsed = parseTransaction(tx);
         expect(parsed.operations[0].type).to.equal('restore_footprint');
+    });
+
+    describe('parsePathPaymentTrades', function () {
+        // Real result_xdr from a path_payment_strict_send transaction on mainnet
+        // Transaction 8d861b3d0c1e8501f150ca0d2f5bd7621b81c909f3b1615a8b8e73b3801c81cb
+        // Contains 4 liquidity pool trades and 2 order book trades
+        const pathPaymentResultXdr = 'AAAAAAAAAGQAAAAAAAAAAQAAAAAAAAANAAAAAAAAAAYAAAACL5Qn+uJYb74IrdtGCko+fLFr2yojKLu3m36C6/8H5TcAAAABWExNAAAAAAAIFKTA1/lfmfT8cLAEmz2xeS2Z3zh4u1mhED+hjNFuzAAABq+EG70QAAAAAAAAAAAAAM0UAAAAApPcmoq4J6AZean6PySVw3PxDj6VWyQRRbU5DW+OVdbdAAAAAU9MVAAAAAAAL67mruJq8g1bj8lCiNVHbidAzKmg3NSrNjUbTCiAbawAAAAADhIvngAAAAFYTE0AAAAAAAgUpMDX+V+Z9PxwsASbPbF5LZnfOHi7WaEQP6GM0W7MAAAGr4QbvRAAAAACgg2uOCvWZHWpZVFxcCGp5X3zwjCOH479kPp3TX9Nf3YAAAACeFJVTkVTAAAAAAAAAAAAAJcJfuPGW8U+3ZTTWqzylg/R4DC4xMybrxWCad9EBRHeAAAAAAFZa70AAAABTkxUAAAAAAAvruau4mryDVuPyUKI1UduJ0DMqaDc1Ks2NRtMKIBtrAAAAAAOEi+eAAAAAihQrEoo1cdE4p+BpW/Oix6Hk06JrJIYvE2pZ/OZ0anJAAAAAlNERVhFWAAAAAAAAAAAAABgdg42ru1O4AINKCDjmPPfYKb27YUjdun2yi4e6WmvggAAAAAODtlCAAAAAnhSVU5FUwAAAAAAAAAAAACXCX7jxlvFPt2U01qs8pYP0eAwuMTMm68VgmnfRAUR3gAAAAABWWu9AAAAAQAAAACdd7Jzw2JRgO7qhWkiKm7tcVghjplqnuZH5XQMjp1mGgAAAABjLOCDAAAAAAAAAAAAANAuAAAAAlNERVhFWAAAAAAAAAAAAABgdg42ru1O4AINKCDjmPPfYKb27YUjdun2yi4e6WmvggAAAAAODtlCAAAAAQAAAABtfzycOy3ID8X/LBcX0lb34EUi64MDCS6264IMhli7JQAAAABjKo3+AAAAAXlYTE0AAAAAIjbXcP4NPgFSGXXVz3rEhCtwldaxqddo0+mmMumZBr4AAAAAAADQLgAAAAAAAAAAAADQLgAAAAAZuKPiuNAtcn2d682XJkONZHHDPYRIu5MemLtevYBqSwAAAAF5WExNAAAAACI213D+DT4BUhl11c96xIQrcJXWsanXaNPppjLpmQa+AAAAAAAA0C4AAAAA';
+
+        it('should return empty array for invalid XDR', function () {
+            const trades = parsePathPaymentTrades('invalid_xdr', 0);
+            expect(trades).to.deep.equal([]);
+        });
+
+        it('should return empty array for non-path-payment operations', function () {
+            // This is a result_xdr from a simple payment operation
+            const paymentResultXdr = 'AAAAAAAAAGQAAAAAAAAAAQAAAAAAAAABAAAAAAAAAAA=';
+            const trades = parsePathPaymentTrades(paymentResultXdr, 0);
+            expect(trades).to.deep.equal([]);
+        });
+
+        it('should return empty array when operation index is out of bounds', function () {
+            const trades = parsePathPaymentTrades(pathPaymentResultXdr, 99);
+            expect(trades).to.deep.equal([]);
+        });
+
+        it('should parse trades from path_payment result', function () {
+            const trades = parsePathPaymentTrades(pathPaymentResultXdr, 0);
+            expect(trades).to.be.an('array');
+            expect(trades.length).to.equal(6);
+            // First 4 are liquidity pool trades
+            expect(trades[0].type).to.equal('liquidity_pool');
+            expect(trades[0]).to.have.property('pool_id');
+            expect(trades[0]).to.have.property('amount_sold');
+            expect(trades[0]).to.have.property('amount_bought');
+            // Last 2 are order book trades
+            expect(trades[4].type).to.equal('order_book');
+            expect(trades[4]).to.have.property('seller_id');
+            expect(trades[4]).to.have.property('offer_id');
+        });
+
+        it('should correctly decode seller_id as Stellar public key', function () {
+            const trades = parsePathPaymentTrades(pathPaymentResultXdr, 0);
+            // Find order book trades
+            const orderBookTrades = trades.filter(t => t.type === 'order_book');
+            expect(orderBookTrades.length).to.equal(2);
+            // Seller ID should be a valid Stellar public key starting with 'G'
+            expect(orderBookTrades[0].seller_id).to.match(/^G[A-Z0-9]{55}$/);
+            // Verify the actual seller_id from the transaction
+            expect(orderBookTrades[0].seller_id).to.equal('GCOXPMTTYNRFDAHO5KCWSIRKN3WXCWBBR2MWVHXGI7SXIDEOTVTBU323');
+            expect(orderBookTrades[1].seller_id).to.equal('GBWX6PE4HMW4QD6F74WBOF6SK336ARJC5OBQGCJOW3VYEDEGLC5SL2WU');
+        });
+
+        it('should parse liquidity pool trades correctly', function () {
+            const trades = parsePathPaymentTrades(pathPaymentResultXdr, 0);
+            const lpTrades = trades.filter(t => t.type === 'liquidity_pool');
+            expect(lpTrades.length).to.equal(4);
+            expect(lpTrades[0].pool_id).to.be.a('string');
+            expect(lpTrades[0].pool_id.length).to.equal(64); // hex encoded 32-byte pool id
+        });
     });
 });
