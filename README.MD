@@ -569,6 +569,8 @@ Notifications are sent as JSON-encoded POST requests with the following format:
 }
 ```
 
+See [RESPONSE_EXAMPLES.md](RESPONSE_EXAMPLES.md) for examples of all operation types.
+
 Request headers:
 
 - `X-Request-ED25519-Signature` – the ED25519 signature for the notification body (base64).
