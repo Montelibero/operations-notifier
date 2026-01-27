@@ -98,9 +98,7 @@
     "source_asset": {
       "asset_type": 0
     },
-    "source_max": {
-      "asset_type": 0
-    },
+    "source_max": "0.7200000",
     "path": [
       { "asset_type": 1, "asset_code": "SHX", "asset_issuer": "GDSTRSHXHGJ7ZIVRBXEYE5Q74XUVCUSEKEBR7UCHEUUEK72N7I7KJ6JH" },
       { "asset_type": 2, "asset_code": "TREAD", "asset_issuer": "GANMKTF7SVYEHZ4CTLRKT2MG2OUJNDEA3JGZGTUTHQZOZSWJHHUF6VLM" },
@@ -388,14 +386,13 @@
     "asset": {
       "asset_type": 0
     },
+    "amount": "15.2535813",
     "source_asset": {
       "asset_type": 1,
       "asset_code": "USDC",
       "asset_issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
     },
-    "dest_min": {
-      "asset_type": 0
-    },
+    "dest_min": "74.0000000",
     "path": [],
     "id": "261832540782866433",
     "account": "GCEX3EVHOJ6DOA7VD52G3D4PVI4CRQ4VEOKBMIXCCX7GBP373PIGFW3W",

@@ -127,7 +127,7 @@ function normalizeOperation(operation) {
                 asset: normalizeAsset(operation.destAsset),
                 amount: operation.destAmount,
                 source_asset: normalizeAsset(operation.sendAsset),
-                source_max: normalizeAsset(operation.sendMax),
+                source_max: operation.sendMax,
                 path: operation.path.map(asset => normalizeAsset(asset))
             }
         case 'pathPaymentStrictSend':
@@ -135,9 +135,9 @@ function normalizeOperation(operation) {
                 type_i: 13,
                 type: 'path_payment_strict_send',
                 asset: normalizeAsset(operation.destAsset),
-                amount: operation.destAmount,
+                amount: operation.sendAmount,
                 source_asset: normalizeAsset(operation.sendAsset),
-                dest_min: normalizeAsset(operation.destMin),
+                dest_min: operation.destMin,
                 path: operation.path.map(asset => normalizeAsset(asset))
             }
         case 'manageOffer':
