@@ -218,7 +218,7 @@ function normalizeOperation(operation) {
                 type_i: 10,
                 type: 'manage_data',
                 name: operation.name,
-                value: operation.value
+                value: operation.value ? operation.value.toString('utf8') : null
             }
         case 'bumpSequence':
             return {
@@ -361,10 +361,14 @@ function processOperation(operation, txDetails, applicationOrder) {
 function processMemo(rawMemo) {
     switch (rawMemo._type) {
         case 'id':
-        case 'text':
             return {
                 type: rawMemo._type,
                 value: rawMemo._value
+            }
+        case 'text':
+            return {
+                type: rawMemo._type,
+                value: rawMemo._value.toString('utf8')
             }
         case 'hash':
         case 'return':

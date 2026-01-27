@@ -302,10 +302,7 @@
     "type_i": 10,
     "type": "manage_data",
     "name": "jid",
-    "value": {
-      "type": "Buffer",
-      "data": [51, 56, 113, 88, 101, 88, 78, 57, 50, 53, 89, 105, 82, 115, 78, 48, 65, 76, 121, 73, 101, 116, 107, 102, 97, 119, 68]
-    },
+    "value": "38qXeXN925YiRsN0ALyIetkfawD",
     "id": "261832489243934723",
     "account": "GCZZB7MIU6CIJT5RVFWC2YO2WGIXE3WWZKIBBXOTGBZPPCQJW66BDXET"
   },
@@ -741,15 +738,12 @@
 {
   "memo": {
     "type": "text",
-    "value": {
-      "type": "Buffer",
-      "data": [95, 98, 111, 116, 95, 115, 101, 108, 108, 95]
-    }
+    "value": "psp:101362392"
   }
 }
 ```
 
-Текстовое memo. `value` — Buffer с UTF-8 байтами. Для получения строки: `Buffer.from(memo.value.data).toString('utf8')` → `"_bot_sell_"`.
+Текстовое memo. `value` — строка UTF-8.
 
 ### memo type: id
 
@@ -795,6 +789,6 @@
 ## Примечания
 
 - `asset_type`: 0 = native (XLM), 1 = credit_alphanum4, 2 = credit_alphanum12
-- `memo.value` — для text это Buffer, для id это строка с числом, для hash/return это base64
+- `memo.value` — для text это UTF-8 строка, для id это строка с числом, для hash/return это base64
 - `trades` присутствует только в path_payment операциях и содержит информацию об исполненных сделках (включая `asset_sold` и `asset_bought`)
 - Deprecated операции (7, 9) больше не используются в сети
