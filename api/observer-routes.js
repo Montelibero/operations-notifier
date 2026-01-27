@@ -1,11 +1,22 @@
 const pkgInfo = require('../package'),
     {signer} = require('../util/signer'),
+    {xdr} = require('@stellar/stellar-sdk'),
     observer = require('../logic/observer'),
     storage = require('../logic/storage'),
     {elapsed} = require('../util/elapsed-time'),
     auth = require('./authorization-handler'),
     roles = require('../models/user/roles'),
     errors = require('../util/errors')
+
+function getOperationTypes() {
+    return Object.values(xdr.OperationType._members)
+        .map(({name, value}) => ({
+            type: value,
+            name: name,
+            horizon_name: name.replace(/([A-Z])/g, '_$1').toLowerCase()
+        }))
+        .sort((a, b) => a.type - b.type)
+}
 
 function processResponse(promiseOrData, res) {
     if (!(promiseOrData instanceof Promise)) promiseOrData = Promise.resolve(promiseOrData)
@@ -84,6 +95,11 @@ module.exports = function (app) {
                 console.error(e)
                 res.status(500).end()
             })
+    })
+
+    //get operation types reference
+    app.get('/api/operation-types', (req, res) => {
+        res.json(getOperationTypes())
     })
 
     //get all subscriptions for current user
