@@ -727,9 +727,74 @@
 
 ---
 
+## Форматы memo
+
+Поле `transaction.memo` присутствует только если транзакция содержит memo.
+
+### memo type: none
+
+Поле `memo` отсутствует в объекте `transaction`.
+
+### memo type: text
+
+```json
+{
+  "memo": {
+    "type": "text",
+    "value": {
+      "type": "Buffer",
+      "data": [95, 98, 111, 116, 95, 115, 101, 108, 108, 95]
+    }
+  }
+}
+```
+
+Текстовое memo. `value` — Buffer с UTF-8 байтами. Для получения строки: `Buffer.from(memo.value.data).toString('utf8')` → `"_bot_sell_"`.
+
+### memo type: id
+
+```json
+{
+  "memo": {
+    "type": "id",
+    "value": "8846179075573047606"
+  }
+}
+```
+
+Числовое memo (uint64). `value` — строка с числом.
+
+### memo type: hash
+
+```json
+{
+  "memo": {
+    "type": "hash",
+    "value": "cXwXSItemtQTE53hEIpYO947FeUwrkZmZr8j+Up1lf0="
+  }
+}
+```
+
+32-байтный хэш. `value` — base64-encoded строка.
+
+### memo type: return
+
+```json
+{
+  "memo": {
+    "type": "return",
+    "value": "ut1VlR8U/pkwlwCtwwn8ICblbqu7RhwKGO44v179nA4="
+  }
+}
+```
+
+32-байтный return hash. `value` — base64-encoded строка.
+
+---
+
 ## Примечания
 
 - `asset_type`: 0 = native (XLM), 1 = credit_alphanum4, 2 = credit_alphanum12
-- `memo.value` может быть строкой или Buffer (для бинарных данных)
-- `trades` присутствует только в path_payment операциях и содержит информацию об исполненных сделках
+- `memo.value` — для text это Buffer, для id это строка с числом, для hash/return это base64
+- `trades` присутствует только в path_payment операциях и содержит информацию об исполненных сделках (включая `asset_sold` и `asset_bought`)
 - Deprecated операции (7, 9) больше не используются в сети
