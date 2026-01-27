@@ -11,6 +11,30 @@ function normalizeAsset(asset) {
     })
 }
 
+function normalizeXdrAsset(xdrAsset) {
+    if (!xdrAsset) return null
+    const type = xdrAsset.switch().name
+    if (type === 'assetTypeNative') {
+        return nativeAsset()
+    }
+    const value = xdrAsset.value()
+    if (type === 'assetTypeCreditAlphanum4') {
+        return {
+            asset_type: 1,
+            asset_code: value.assetCode().toString().replace(/\0/g, ''),
+            asset_issuer: StrKey.encodeEd25519PublicKey(value.issuer().ed25519())
+        }
+    }
+    if (type === 'assetTypeCreditAlphanum12') {
+        return {
+            asset_type: 2,
+            asset_code: value.assetCode().toString().replace(/\0/g, ''),
+            asset_issuer: StrKey.encodeEd25519PublicKey(value.issuer().ed25519())
+        }
+    }
+    return null
+}
+
 /**
  * Parse trades (ClaimAtom) from path_payment result XDR.
  * @param {string} resultXdr - Base64-encoded transaction result XDR
@@ -44,7 +68,9 @@ function parsePathPaymentTrades(resultXdr, operationIndex) {
                     type: 'order_book',
                     seller_id: StrKey.encodeEd25519PublicKey(ob.sellerId().ed25519()),
                     offer_id: ob.offerId().toString(),
+                    asset_sold: normalizeXdrAsset(ob.assetSold()),
                     amount_sold: ob.amountSold().toString(),
+                    asset_bought: normalizeXdrAsset(ob.assetBought()),
                     amount_bought: ob.amountBought().toString()
                 }
             } else if (type === 'claimAtomTypeLiquidityPool') {
@@ -52,7 +78,9 @@ function parsePathPaymentTrades(resultXdr, operationIndex) {
                 return {
                     type: 'liquidity_pool',
                     pool_id: lp.liquidityPoolId().toString('hex'),
+                    asset_sold: normalizeXdrAsset(lp.assetSold()),
                     amount_sold: lp.amountSold().toString(),
+                    asset_bought: normalizeXdrAsset(lp.assetBought()),
                     amount_bought: lp.amountBought().toString()
                 }
             }
