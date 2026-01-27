@@ -1,3 +1,11 @@
+0.6.1 / 2026-01-27
+==================
+
+* Add asset_sold and asset_bought to path_payment trades.
+* Convert text memo and manage_data value to UTF-8 strings.
+* Update operation_types validation to use dynamic values from Stellar SDK.
+* Add RESPONSE_EXAMPLES.md with notification payload examples.
+
 0.6.0 / 2026-01-25
 ==================
 

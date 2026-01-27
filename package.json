@@ -2,7 +2,7 @@
   "name": "@stellar-expert/operations-notifier",
   "license": "MIT",
   "private": true,
-  "version": "0.6.0",
+  "version": "0.6.1",
   "author": "orbitlens<orbit.lens@stellar.expert>",
   "description": "Stellar operations observer and notifier.",
   "main": "app.js",
