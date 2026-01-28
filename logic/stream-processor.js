@@ -48,7 +48,15 @@ function normalizeXdrAsset(xdrAsset) {
 function parsePathPaymentTrades(resultXdr, operationIndex) {
     try {
         const result = xdr.TransactionResult.fromXDR(resultXdr, 'base64')
-        const opResults = result.result().results()
+        const resultType = result.result().switch().name
+
+        // Handle fee-bump transactions
+        let opResults
+        if (resultType === 'txFeeBumpInnerSuccess' || resultType === 'txFeeBumpInnerFailed') {
+            opResults = result.result().innerResultPair().result().result().results()
+        } else {
+            opResults = result.result().results()
+        }
         if (!opResults || operationIndex >= opResults.length) return []
 
         const opResult = opResults[operationIndex]
