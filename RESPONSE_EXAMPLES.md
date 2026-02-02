@@ -99,6 +99,7 @@
       "asset_type": 0
     },
     "source_max": "0.7200000",
+    "source_amount": "0.7095890",
     "path": [
       { "asset_type": 1, "asset_code": "SHX", "asset_issuer": "GDSTRSHXHGJ7ZIVRBXEYE5Q74XUVCUSEKEBR7UCHEUUEK72N7I7KJ6JH" },
       { "asset_type": 2, "asset_code": "TREAD", "asset_issuer": "GANMKTF7SVYEHZ4CTLRKT2MG2OUJNDEA3JGZGTUTHQZOZSWJHHUF6VLM" },
@@ -161,6 +162,42 @@
   }
 }
 ```
+
+### Создание нового ордера (offerId: "0")
+
+При создании нового ордера (`offerId: "0"`) в ответ добавляется `created_offer_id` — ID созданного оффера в orderbook:
+
+```json
+{
+  "operation": {
+    "type_i": 3,
+    "type": "manage_sell_offer",
+    "asset": {
+      "asset_type": 1,
+      "asset_code": "USDM",
+      "asset_issuer": "GDHU6WRG4IEQXM5NZ4BMPKOXHW76MZM4Y2IEMFDVXBSDP6SJY4ITNPP2"
+    },
+    "amount": "1.0000000",
+    "source_asset": {
+      "asset_type": 2,
+      "asset_code": "EURMTL",
+      "asset_issuer": "GACKTN5DAZGWXRWB2WLM6OPBDHAMT6SJNGLJZPQMEZBUR4JUGBX2UK7V"
+    },
+    "price": "2",
+    "offerId": "0",
+    "created_offer_id": "1821833749",
+    "id": "261832540782870530",
+    "account": "GAN33M7RCFCNQFZ4HZ42ZXGBFGN3TOJGLC7J35JZ2LGCUXA56X5LKYXQ"
+  }
+}
+```
+
+| Сценарий | offerId | created_offer_id |
+|----------|---------|------------------|
+| Новый ордер (частично/не исполнен) | "0" | "123456" |
+| Новый ордер (полностью исполнен) | "0" | отсутствует |
+| Изменение существующего | "123456" | отсутствует |
+| Удаление | "123456" | отсутствует |
 
 ---
 
@@ -393,6 +430,7 @@
       "asset_issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
     },
     "dest_min": "74.0000000",
+    "dest_amount": "74.5626833",
     "path": [],
     "id": "261832540782866433",
     "account": "GCEX3EVHOJ6DOA7VD52G3D4PVI4CRQ4VEOKBMIXCCX7GBP373PIGFW3W",
@@ -788,4 +826,7 @@
 - `asset_type`: 0 = native (XLM), 1 = credit_alphanum4, 2 = credit_alphanum12
 - `memo.value` — для text это UTF-8 строка, для id это строка с числом, для hash/return это base64
 - `trades` присутствует только в path_payment операциях и содержит информацию об исполненных сделках (включая `asset_sold` и `asset_bought`)
+- `source_amount` — реально потраченная сумма source asset (только для `path_payment_strict_receive`)
+- `dest_amount` — реально полученная сумма dest asset (только для `path_payment_strict_send`)
+- `created_offer_id` — ID созданного оффера (только для `manage_sell_offer`/`manage_buy_offer` когда `offerId: "0"` и ордер не был полностью исполнен)
 - Deprecated операции (7, 9) больше не используются в сети

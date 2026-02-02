@@ -40,12 +40,12 @@ function normalizeXdrAsset(xdrAsset) {
 }
 
 /**
- * Parse trades (ClaimAtom) from path_payment result XDR.
+ * Parse manage offer result XDR to extract created_offer_id.
  * @param {string} resultXdr - Base64-encoded transaction result XDR
  * @param {number} operationIndex - Index of the operation in the transaction
- * @returns {Array} Array of parsed trades
+ * @returns {Object} Object with created_offer_id if offer was created or updated
  */
-function parsePathPaymentTrades(resultXdr, operationIndex) {
+function parseManageOfferResult(resultXdr, operationIndex) {
     try {
         const result = xdr.TransactionResult.fromXDR(resultXdr, 'base64')
         const resultType = result.result().switch().name
@@ -57,22 +57,69 @@ function parsePathPaymentTrades(resultXdr, operationIndex) {
         } else {
             opResults = result.result().results()
         }
-        if (!opResults || operationIndex >= opResults.length) return []
+        if (!opResults || operationIndex >= opResults.length) return {}
 
         const opResult = opResults[operationIndex]
         const tr = opResult?.tr?.()
-        if (!tr) return []
+        if (!tr) return {}
 
-        const opType = tr.switch().name
-        if (opType !== 'pathPaymentStrictSend' && opType !== 'pathPaymentStrictReceive') return []
+        const xdrOpType = tr.switch().name
+        if (xdrOpType !== 'manageSellOffer' && xdrOpType !== 'manageBuyOffer') return {}
 
         const inner = tr.value()
-        if (!inner?.success) return []
+        if (!inner?.success) return {}
+
+        const success = inner.success()
+        const offer = success.offer()
+        const offerSwitch = offer.switch().name
+
+        if (offerSwitch === 'manageOfferCreated' || offerSwitch === 'manageOfferUpdated') {
+            return { created_offer_id: offer.offer().offerId().toString() }
+        }
+
+        return {}
+    } catch (e) {
+        console.error('Failed to parse manage offer result:', e.message)
+        return {}
+    }
+}
+
+/**
+ * Parse trades (ClaimAtom) and actual amounts from path_payment result XDR.
+ * @param {string} resultXdr - Base64-encoded transaction result XDR
+ * @param {number} operationIndex - Index of the operation in the transaction
+ * @param {string} opType - Operation type ('path_payment_strict_send' or 'path_payment_strict_receive')
+ * @returns {Object} Object with trades array and actual amounts (dest_amount for strict_send, source_amount for strict_receive)
+ */
+function parsePathPaymentTrades(resultXdr, operationIndex, opType) {
+    const emptyResult = { trades: [] }
+    try {
+        const result = xdr.TransactionResult.fromXDR(resultXdr, 'base64')
+        const resultType = result.result().switch().name
+
+        // Handle fee-bump transactions
+        let opResults
+        if (resultType === 'txFeeBumpInnerSuccess' || resultType === 'txFeeBumpInnerFailed') {
+            opResults = result.result().innerResultPair().result().result().results()
+        } else {
+            opResults = result.result().results()
+        }
+        if (!opResults || operationIndex >= opResults.length) return emptyResult
+
+        const opResult = opResults[operationIndex]
+        const tr = opResult?.tr?.()
+        if (!tr) return emptyResult
+
+        const xdrOpType = tr.switch().name
+        if (xdrOpType !== 'pathPaymentStrictSend' && xdrOpType !== 'pathPaymentStrictReceive') return emptyResult
+
+        const inner = tr.value()
+        if (!inner?.success) return emptyResult
 
         const success = inner.success()
         const offers = success?.offers?.() || []
 
-        return offers.map(claim => {
+        const trades = offers.map(claim => {
             const type = claim.switch().name
             if (type === 'claimAtomTypeOrderBook') {
                 const ob = claim.orderBook()
@@ -98,9 +145,31 @@ function parsePathPaymentTrades(resultXdr, operationIndex) {
             }
             return null
         }).filter(Boolean)
+
+        // Extract actual amounts from the result
+        const resultObj = { trades }
+
+        // last contains SimplePaymentResult: { destination, asset, amount }
+        const last = success.last()
+        if (last) {
+            const destAmount = stroopsToAmount(last.amount().toString())
+
+            if (opType === 'path_payment_strict_send') {
+                // For strict_send: last.amount is the actual destination amount received
+                resultObj.dest_amount = destAmount
+            } else if (opType === 'path_payment_strict_receive') {
+                // For strict_receive: calculate source_amount from first trade's amount_bought
+                // The source_amount is what was actually spent from the source asset
+                if (trades.length > 0) {
+                    resultObj.source_amount = trades[0].amount_bought
+                }
+            }
+        }
+
+        return resultObj
     } catch (e) {
         console.error('Failed to parse path payment trades:', e.message)
-        return []
+        return emptyResult
     }
 }
 
@@ -357,9 +426,24 @@ function processOperation(operation, txDetails, applicationOrder) {
     normalized.account = normalized.account || operation.source || txDetails.source
     normalized.transaction_details = txDetails
 
-    // Parse trades from result_xdr for path_payment operations
+    // Parse trades and actual amounts from result_xdr for path_payment operations
     if ((normalized.type === 'path_payment_strict_send' || normalized.type === 'path_payment_strict_receive') && txDetails.result_xdr) {
-        normalized.trades = parsePathPaymentTrades(txDetails.result_xdr, applicationOrder)
+        const pathResult = parsePathPaymentTrades(txDetails.result_xdr, applicationOrder, normalized.type)
+        normalized.trades = pathResult.trades
+        if (pathResult.dest_amount !== undefined) {
+            normalized.dest_amount = pathResult.dest_amount
+        }
+        if (pathResult.source_amount !== undefined) {
+            normalized.source_amount = pathResult.source_amount
+        }
+    }
+
+    // Parse created_offer_id from result_xdr for manage offer operations
+    if (normalized.type === 'manage_sell_offer' && txDetails.result_xdr && normalized.offerId === '0') {
+        const offerResult = parseManageOfferResult(txDetails.result_xdr, applicationOrder)
+        if (offerResult.created_offer_id) {
+            normalized.created_offer_id = offerResult.created_offer_id
+        }
     }
 
     return normalized
@@ -441,5 +525,6 @@ function parseTransaction(transaction) {
 
 module.exports = {
     parseTransaction,
-    parsePathPaymentTrades
+    parsePathPaymentTrades,
+    parseManageOfferResult
 }

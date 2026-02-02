@@ -1,7 +1,7 @@
 const expect = require('chai').expect;
 const sinon = require('sinon');
 const { TransactionBuilder } = require('@stellar/stellar-sdk');
-const { parseTransaction, parsePathPaymentTrades } = require('../logic/stream-processor');
+const { parseTransaction, parsePathPaymentTrades, parseManageOfferResult } = require('../logic/stream-processor');
 
 describe('stream-processor', function () {
     afterEach(() => {
@@ -154,42 +154,42 @@ describe('stream-processor', function () {
         // Contains 4 liquidity pool trades and 2 order book trades
         const pathPaymentResultXdr = 'AAAAAAAAAGQAAAAAAAAAAQAAAAAAAAANAAAAAAAAAAYAAAACL5Qn+uJYb74IrdtGCko+fLFr2yojKLu3m36C6/8H5TcAAAABWExNAAAAAAAIFKTA1/lfmfT8cLAEmz2xeS2Z3zh4u1mhED+hjNFuzAAABq+EG70QAAAAAAAAAAAAAM0UAAAAApPcmoq4J6AZean6PySVw3PxDj6VWyQRRbU5DW+OVdbdAAAAAU9MVAAAAAAAL67mruJq8g1bj8lCiNVHbidAzKmg3NSrNjUbTCiAbawAAAAADhIvngAAAAFYTE0AAAAAAAgUpMDX+V+Z9PxwsASbPbF5LZnfOHi7WaEQP6GM0W7MAAAGr4QbvRAAAAACgg2uOCvWZHWpZVFxcCGp5X3zwjCOH479kPp3TX9Nf3YAAAACeFJVTkVTAAAAAAAAAAAAAJcJfuPGW8U+3ZTTWqzylg/R4DC4xMybrxWCad9EBRHeAAAAAAFZa70AAAABTkxUAAAAAAAvruau4mryDVuPyUKI1UduJ0DMqaDc1Ks2NRtMKIBtrAAAAAAOEi+eAAAAAihQrEoo1cdE4p+BpW/Oix6Hk06JrJIYvE2pZ/OZ0anJAAAAAlNERVhFWAAAAAAAAAAAAABgdg42ru1O4AINKCDjmPPfYKb27YUjdun2yi4e6WmvggAAAAAODtlCAAAAAnhSVU5FUwAAAAAAAAAAAACXCX7jxlvFPt2U01qs8pYP0eAwuMTMm68VgmnfRAUR3gAAAAABWWu9AAAAAQAAAACdd7Jzw2JRgO7qhWkiKm7tcVghjplqnuZH5XQMjp1mGgAAAABjLOCDAAAAAAAAAAAAANAuAAAAAlNERVhFWAAAAAAAAAAAAABgdg42ru1O4AINKCDjmPPfYKb27YUjdun2yi4e6WmvggAAAAAODtlCAAAAAQAAAABtfzycOy3ID8X/LBcX0lb34EUi64MDCS6264IMhli7JQAAAABjKo3+AAAAAXlYTE0AAAAAIjbXcP4NPgFSGXXVz3rEhCtwldaxqddo0+mmMumZBr4AAAAAAADQLgAAAAAAAAAAAADQLgAAAAAZuKPiuNAtcn2d682XJkONZHHDPYRIu5MemLtevYBqSwAAAAF5WExNAAAAACI213D+DT4BUhl11c96xIQrcJXWsanXaNPppjLpmQa+AAAAAAAA0C4AAAAA';
 
-        it('should return empty array for invalid XDR', function () {
-            const trades = parsePathPaymentTrades('invalid_xdr', 0);
-            expect(trades).to.deep.equal([]);
+        it('should return empty trades array for invalid XDR', function () {
+            const result = parsePathPaymentTrades('invalid_xdr', 0, 'path_payment_strict_send');
+            expect(result.trades).to.deep.equal([]);
         });
 
-        it('should return empty array for non-path-payment operations', function () {
+        it('should return empty trades array for non-path-payment operations', function () {
             // This is a result_xdr from a simple payment operation
             const paymentResultXdr = 'AAAAAAAAAGQAAAAAAAAAAQAAAAAAAAABAAAAAAAAAAA=';
-            const trades = parsePathPaymentTrades(paymentResultXdr, 0);
-            expect(trades).to.deep.equal([]);
+            const result = parsePathPaymentTrades(paymentResultXdr, 0, 'path_payment_strict_send');
+            expect(result.trades).to.deep.equal([]);
         });
 
-        it('should return empty array when operation index is out of bounds', function () {
-            const trades = parsePathPaymentTrades(pathPaymentResultXdr, 99);
-            expect(trades).to.deep.equal([]);
+        it('should return empty trades array when operation index is out of bounds', function () {
+            const result = parsePathPaymentTrades(pathPaymentResultXdr, 99, 'path_payment_strict_send');
+            expect(result.trades).to.deep.equal([]);
         });
 
         it('should parse trades from path_payment result', function () {
-            const trades = parsePathPaymentTrades(pathPaymentResultXdr, 0);
-            expect(trades).to.be.an('array');
-            expect(trades.length).to.equal(6);
+            const result = parsePathPaymentTrades(pathPaymentResultXdr, 0, 'path_payment_strict_send');
+            expect(result.trades).to.be.an('array');
+            expect(result.trades.length).to.equal(6);
             // First 4 are liquidity pool trades
-            expect(trades[0].type).to.equal('liquidity_pool');
-            expect(trades[0]).to.have.property('pool_id');
-            expect(trades[0]).to.have.property('amount_sold');
-            expect(trades[0]).to.have.property('amount_bought');
+            expect(result.trades[0].type).to.equal('liquidity_pool');
+            expect(result.trades[0]).to.have.property('pool_id');
+            expect(result.trades[0]).to.have.property('amount_sold');
+            expect(result.trades[0]).to.have.property('amount_bought');
             // Last 2 are order book trades
-            expect(trades[4].type).to.equal('order_book');
-            expect(trades[4]).to.have.property('seller_id');
-            expect(trades[4]).to.have.property('offer_id');
+            expect(result.trades[4].type).to.equal('order_book');
+            expect(result.trades[4]).to.have.property('seller_id');
+            expect(result.trades[4]).to.have.property('offer_id');
         });
 
         it('should correctly decode seller_id as Stellar public key', function () {
-            const trades = parsePathPaymentTrades(pathPaymentResultXdr, 0);
+            const result = parsePathPaymentTrades(pathPaymentResultXdr, 0, 'path_payment_strict_send');
             // Find order book trades
-            const orderBookTrades = trades.filter(t => t.type === 'order_book');
+            const orderBookTrades = result.trades.filter(t => t.type === 'order_book');
             expect(orderBookTrades.length).to.equal(2);
             // Seller ID should be a valid Stellar public key starting with 'G'
             expect(orderBookTrades[0].seller_id).to.match(/^G[A-Z0-9]{55}$/);
@@ -199,11 +199,71 @@ describe('stream-processor', function () {
         });
 
         it('should parse liquidity pool trades correctly', function () {
-            const trades = parsePathPaymentTrades(pathPaymentResultXdr, 0);
-            const lpTrades = trades.filter(t => t.type === 'liquidity_pool');
+            const result = parsePathPaymentTrades(pathPaymentResultXdr, 0, 'path_payment_strict_send');
+            const lpTrades = result.trades.filter(t => t.type === 'liquidity_pool');
             expect(lpTrades.length).to.equal(4);
             expect(lpTrades[0].pool_id).to.be.a('string');
             expect(lpTrades[0].pool_id.length).to.equal(64); // hex encoded 32-byte pool id
+        });
+
+        it('should return dest_amount for path_payment_strict_send', function () {
+            const result = parsePathPaymentTrades(pathPaymentResultXdr, 0, 'path_payment_strict_send');
+            expect(result).to.have.property('dest_amount');
+            // XDR last.amount = 53294 stroops = 0.0053294
+            expect(result.dest_amount).to.equal('0.0053294');
+        });
+
+        it('should return source_amount for path_payment_strict_receive', function () {
+            const result = parsePathPaymentTrades(pathPaymentResultXdr, 0, 'path_payment_strict_receive');
+            expect(result).to.have.property('source_amount');
+            // source_amount is the first trade's amount_bought
+            expect(result.source_amount).to.be.a('string');
+            // The first trade's amount_bought from the XDR = 0.0052500
+            expect(result.source_amount).to.equal('0.0052500');
+        });
+
+        it('should return object with trades array', function () {
+            const result = parsePathPaymentTrades(pathPaymentResultXdr, 0, 'path_payment_strict_send');
+            expect(result).to.have.property('trades');
+            expect(result.trades).to.be.an('array');
+            expect(result.trades.length).to.equal(6);
+        });
+    });
+
+    describe('parseManageOfferResult', function () {
+        // Real result_xdr from transaction fbd09b1aabac9d37ddec7cd8f751d76ddb1c31b25c0b5177b3dff6f7b453f3a3
+        // Contains manage_sell_offer with created offer_id: 1821833749
+        const manageOfferResultXdr = 'AAAAAAAAAGQAAAAAAAAAAQAAAAAAAAADAAAAAAAAAAAAAAAAAAAAANcz8UpgOR0kygfupHRrOkNJ80PsT1V6UvYPnKz1WKyQAAAAAGyW+hUAAAACRVVSTVRMAAAAAAAAAAAAAASpt6MGTWvGwdWWzznhGcDJ+klplpy+DCZDSPE0MG+qAAAAAVVTRE0AAAAAzjFwwWvYRuQOCHjRQ12ZsvHFXsmtQ0ka1OpQTcuL5UoAAAAABfXhAAAAAAIAAAABAAAAAAAAAAAAAAAA';
+
+        it('should return empty object for invalid XDR', function () {
+            const result = parseManageOfferResult('invalid_xdr', 0);
+            expect(result).to.deep.equal({});
+        });
+
+        it('should return empty object for non-manage-offer operations', function () {
+            // This is a result_xdr from a simple payment operation
+            const paymentResultXdr = 'AAAAAAAAAGQAAAAAAAAAAQAAAAAAAAABAAAAAAAAAAA=';
+            const result = parseManageOfferResult(paymentResultXdr, 0);
+            expect(result).to.deep.equal({});
+        });
+
+        it('should return empty object when operation index is out of bounds', function () {
+            const result = parseManageOfferResult(manageOfferResultXdr, 99);
+            expect(result).to.deep.equal({});
+        });
+
+        it('should parse created_offer_id from manage_sell_offer result', function () {
+            const result = parseManageOfferResult(manageOfferResultXdr, 0);
+            expect(result).to.have.property('created_offer_id');
+            expect(result.created_offer_id).to.equal('1821833749');
+        });
+
+        it('should return empty object when offer is deleted (fully filled)', function () {
+            // result_xdr with manageOfferDeleted result
+            // Transaction where offer was fully filled immediately
+            const deletedOfferResultXdr = 'AAAAAAAAAGQAAAAAAAAAAQAAAAAAAAADAAAAAAAAAAEAAAAAnXeycMNiUYDu6oVpIipu7XFYIo6Zap7mR+V0DI6dZhoAAAAAYyzggwAAAAFZRVNCVQAAAAAAAAAAAAAABKm3owZNa8bB1ZbPOeEZwMn6SWmWnL4MJkNI8TQwb6oAAAAADWSwQAAAAAF4WExNAAAAACI213D+DT4BUhl11c96xIQrcJXWsanXaNPppjLpmQa+AAABJWv0gDQAAAAAAAAAAAAAAAA=';
+            const result = parseManageOfferResult(deletedOfferResultXdr, 0);
+            expect(result).to.deep.equal({});
         });
     });
 });
