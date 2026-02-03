@@ -199,6 +199,80 @@
 | Изменение существующего | "123456" | отсутствует |
 | Удаление | "123456" | отсутствует |
 
+### Полное исполнение ордера (offerId: "0", offer deleted) с trades
+
+Если ордер исполнился полностью, `created_offer_id` не приходит, а в `trades` будут сделки из `offers_claimed`:
+
+```json
+{
+  "operation": {
+    "type_i": 3,
+    "type": "manage_sell_offer",
+    "asset": {
+      "asset_type": 1,
+      "asset_code": "USDM",
+      "asset_issuer": "GDHDC4GBNPMENZAOBB4NCQ25TGZPDRK6ZGWUGSI22TVFATOLRPSUUSDM"
+    },
+    "amount": "10.0000000",
+    "source_asset": {
+      "asset_type": 1,
+      "asset_code": "USDC",
+      "asset_issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+    },
+    "price": "1",
+    "offerId": "0",
+    "id": "262240871913701377",
+    "account": "GDLTH4KKMA4R2JGKA7XKI5DLHJBUT42D5RHVK6SS6YHZZLHVLCWJAYXI",
+    "trades": [
+      {
+        "type": "order_book",
+        "seller_id": "GDRHFCER547Q46TCC5LXFM4KJ6UQITX6JQUREGO4IG4OMS7DPAEHRE47",
+        "offer_id": "1821860742",
+        "asset_sold": {
+          "asset_type": 1,
+          "asset_code": "USDM",
+          "asset_issuer": "GDHDC4GBNPMENZAOBB4NCQ25TGZPDRK6ZGWUGSI22TVFATOLRPSUUSDM"
+        },
+        "amount_sold": "0.0264128",
+        "asset_bought": {
+          "asset_type": 1,
+          "asset_code": "USDC",
+          "asset_issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+        },
+        "amount_bought": "0.0264125"
+      },
+      {
+        "type": "order_book",
+        "seller_id": "GAROW3ZU3ZLSWA4FR6WGFDIKJFUROKJHWD7G4YJCRMZVRR6PWZL6LAOU",
+        "offer_id": "1821865109",
+        "asset_sold": {
+          "asset_type": 1,
+          "asset_code": "USDM",
+          "asset_issuer": "GDHDC4GBNPMENZAOBB4NCQ25TGZPDRK6ZGWUGSI22TVFATOLRPSUUSDM"
+        },
+        "amount_sold": "9.9736712",
+        "asset_bought": {
+          "asset_type": 1,
+          "asset_code": "USDC",
+          "asset_issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+        },
+        "amount_bought": "9.9735875"
+      }
+    ]
+  },
+  "transaction": {
+    "hash": "c128307d23bc7099b107d2d3782cec4fb0152b53d0626429af2b73341f24a53a",
+    "fee": "100",
+    "fee_charged": "100",
+    "max_fee": "10000",
+    "source": "GDLTH4KKMA4R2JGKA7XKI5DLHJBUT42D5RHVK6SS6YHZZLHVLCWJAYXI",
+    "paging_token": "262240871913701376",
+    "source_account_sequence": "151245301938660090",
+    "created_at": "2026-02-03T01:29:14Z"
+  }
+}
+```
+
 ---
 
 ## 4 | create_passive_sell_offer

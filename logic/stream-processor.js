@@ -40,12 +40,13 @@ function normalizeXdrAsset(xdrAsset) {
 }
 
 /**
- * Parse manage offer result XDR to extract created_offer_id.
+ * Parse manage offer result XDR to extract created_offer_id and claimed trades.
  * @param {string} resultXdr - Base64-encoded transaction result XDR
  * @param {number} operationIndex - Index of the operation in the transaction
- * @returns {Object} Object with created_offer_id if offer was created or updated
+ * @returns {Object} Object with created_offer_id and trades (if any)
  */
 function parseManageOfferResult(resultXdr, operationIndex) {
+    const emptyResult = { trades: [] }
     try {
         const result = xdr.TransactionResult.fromXDR(resultXdr, 'base64')
         const resultType = result.result().switch().name
@@ -57,30 +58,68 @@ function parseManageOfferResult(resultXdr, operationIndex) {
         } else {
             opResults = result.result().results()
         }
-        if (!opResults || operationIndex >= opResults.length) return {}
+        if (!opResults || operationIndex >= opResults.length) return emptyResult
 
         const opResult = opResults[operationIndex]
         const tr = opResult?.tr?.()
-        if (!tr) return {}
+        if (!tr) return emptyResult
 
         const xdrOpType = tr.switch().name
-        if (xdrOpType !== 'manageSellOffer' && xdrOpType !== 'manageBuyOffer') return {}
+        if (xdrOpType !== 'manageSellOffer' && xdrOpType !== 'manageBuyOffer') return emptyResult
 
         const inner = tr.value()
-        if (!inner?.success) return {}
+        if (!inner?.success) return emptyResult
 
         const success = inner.success()
-        const offer = success.offer()
-        const offerSwitch = offer.switch().name
 
-        if (offerSwitch === 'manageOfferCreated' || offerSwitch === 'manageOfferUpdated') {
-            return { created_offer_id: offer.offer().offerId().toString() }
+        const offersClaimed =
+            typeof success.offersClaimed === 'function'
+                ? success.offersClaimed()
+                : typeof success.offers_claimed === 'function'
+                    ? success.offers_claimed()
+                    : []
+
+        const trades = (offersClaimed || []).map(claim => {
+            const type = claim.switch().name
+            if (type === 'claimAtomTypeOrderBook') {
+                const ob = claim.orderBook()
+                return {
+                    type: 'order_book',
+                    seller_id: StrKey.encodeEd25519PublicKey(ob.sellerId().ed25519()),
+                    offer_id: ob.offerId().toString(),
+                    asset_sold: normalizeXdrAsset(ob.assetSold()),
+                    amount_sold: stroopsToAmount(ob.amountSold().toString()),
+                    asset_bought: normalizeXdrAsset(ob.assetBought()),
+                    amount_bought: stroopsToAmount(ob.amountBought().toString())
+                }
+            } else if (type === 'claimAtomTypeLiquidityPool') {
+                const lp = claim.liquidityPool()
+                return {
+                    type: 'liquidity_pool',
+                    pool_id: lp.liquidityPoolId().toString('hex'),
+                    asset_sold: normalizeXdrAsset(lp.assetSold()),
+                    amount_sold: stroopsToAmount(lp.amountSold().toString()),
+                    asset_bought: normalizeXdrAsset(lp.assetBought()),
+                    amount_bought: stroopsToAmount(lp.amountBought().toString())
+                }
+            }
+            return null
+        }).filter(Boolean)
+
+        const resultObj = { trades }
+
+        const offer = typeof success.offer === 'function' ? success.offer() : null
+        if (offer) {
+            const offerSwitch = offer.switch().name
+            if (offerSwitch === 'manageOfferCreated' || offerSwitch === 'manageOfferUpdated') {
+                resultObj.created_offer_id = offer.offer().offerId().toString()
+            }
         }
 
-        return {}
+        return resultObj
     } catch (e) {
         console.error('Failed to parse manage offer result:', e.message)
-        return {}
+        return emptyResult
     }
 }
 
@@ -438,10 +477,13 @@ function processOperation(operation, txDetails, applicationOrder) {
         }
     }
 
-    // Parse created_offer_id from result_xdr for manage offer operations
-    if (normalized.type === 'manage_sell_offer' && txDetails.result_xdr && normalized.offerId === '0') {
+    // Parse claimed trades and created_offer_id from result_xdr for manage offer operations
+    if (normalized.type === 'manage_sell_offer' && txDetails.result_xdr) {
         const offerResult = parseManageOfferResult(txDetails.result_xdr, applicationOrder)
-        if (offerResult.created_offer_id) {
+        if (offerResult.trades?.length) {
+            normalized.trades = offerResult.trades
+        }
+        if (normalized.offerId === '0' && offerResult.created_offer_id) {
             normalized.created_offer_id = offerResult.created_offer_id
         }
     }
