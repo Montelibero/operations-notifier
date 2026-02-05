@@ -291,6 +291,15 @@ class TransactionWatcher {
      */
     watch() {
         if (this.releaseStream) return
+
+        // Check if cursor reset is requested
+        if (config.resetCursor) {
+            logger.info('RESET_CURSOR is set, ignoring saved cursor and starting live stream')
+            this.cursor = null
+            this.trackTransactions()
+            return
+        }
+
         storage.getLastIngestedTx()
             .then(cursor => {
                 console.log(`Starting watch with initial cursor: ${cursor}`)

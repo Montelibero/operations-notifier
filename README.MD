@@ -196,6 +196,12 @@ Maximum consecutive lost notifications for a subscription before it is
 automatically removed.\
 Default value: `10`.\
 Env parameter: `MAX_CONSECUTIVE_LOST_NOTIFICATIONS`
+- **resetCursor**\
+When set to `true`, ignores the saved cursor on startup and begins from the
+live stream (current ledger). The cursor continues to be saved normally.
+Useful for skipping large backlogs after extended downtime.\
+Default value: `false`.\
+Env parameter: `RESET_CURSOR`
 
 - **logLevel**\
 Log verbosity level (DEBUG, INFO, WARN, ERROR).\

@@ -42,5 +42,6 @@ parseEnv('LEDGER_WORKERS')
 parseEnv('TRANSACTION_WORKERS')
 parseEnv('ADMIN_UI_ENABLED')
 parseEnv('LOG_LEVEL')
+parseEnv('RESET_CURSOR')
 
 module.exports = config
