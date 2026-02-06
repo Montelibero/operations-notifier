@@ -20,7 +20,7 @@ module.exports = function (app) {
     logger.info('✨ Admin UI is available at:')
     logger.info(`🔗 http://${host}:${port}/admin`)
     logger.info(`🔑 Use admin token for access: ${config.adminAuthenticationToken ? config.adminAuthenticationToken.substring(0, 8) + '...' : 'not set'}`)
-    logger.info('📖 Documentation: https://github.com/stellar-expert/operations-notifier#admin-ui')
+    logger.info('📖 Documentation: https://github.com/Montelibero/operations-notifier')
 
     // Admin UI access route without authentication (auth will happen client-side)
     app.get('/admin', (req, res) => {
