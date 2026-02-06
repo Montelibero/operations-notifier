@@ -41,7 +41,9 @@
     "source": "GDNHPXSFIZQMJJFBAFWUWG3442AHGI3WEWUYRYXIGMJRHDUQOPHTKLDC",
     "paging_token": "261832540782891008",
     "source_account_sequence": "255319476281840155",
-    "created_at": "2026-01-27T15:37:22Z"
+    "created_at": "2026-01-27T15:37:22Z",
+    "result_xdr": "AAAAAAAAAJQA...",
+    "envelope_xdr": "AAAAAgAAAAB..."
   }
 }
 ```
@@ -77,7 +79,9 @@
     "memo": {
       "type": "text",
       "value": "staking reward: 3e3d…ec1e"
-    }
+    },
+    "result_xdr": "AAAAAAAAAJQA...",
+    "envelope_xdr": "AAAAAgAAAAB..."
   }
 }
 ```
@@ -122,7 +126,9 @@
     "source": "GDHAJO6CSLXVK4XDQ7MPG2CEI4GCAPLHDXTRRWG5SOEHLGDLZSBVMAUK",
     "paging_token": "261832532194631680",
     "source_account_sequence": "259495249645161455",
-    "created_at": "2026-01-27T15:37:10Z"
+    "created_at": "2026-01-27T15:37:10Z",
+    "result_xdr": "AAAAAAAAAJQA...",
+    "envelope_xdr": "AAAAAgAAAAB..."
   }
 }
 ```
@@ -158,7 +164,9 @@
     "source": "GAZSKD4VESGLQNLJTHHPDYH4G5QUQ5BCB5GOSPYUJSU32Q55QQDNTQ7C",
     "paging_token": "261832540782870528",
     "source_account_sequence": "183923006559635841",
-    "created_at": "2026-01-27T15:37:22Z"
+    "created_at": "2026-01-27T15:37:22Z",
+    "result_xdr": "AAAAAAAAAJQA...",
+    "envelope_xdr": "AAAAAgAAAAB..."
   }
 }
 ```
@@ -268,7 +276,9 @@
     "source": "GDLTH4KKMA4R2JGKA7XKI5DLHJBUT42D5RHVK6SS6YHZZLHVLCWJAYXI",
     "paging_token": "262240871913701376",
     "source_account_sequence": "151245301938660090",
-    "created_at": "2026-02-03T01:29:14Z"
+    "created_at": "2026-02-03T01:29:14Z",
+    "result_xdr": "AAAAAAAAAJQA...",
+    "envelope_xdr": "AAAAAgAAAAB..."
   }
 }
 ```
@@ -301,7 +311,9 @@
     "hash": "ca1946ee4f4a9a59702f1b2df26373cae3e146cefb5416472a003fe0ba42c6b2",
     "source": "GCNKX5DV74T22BWQKQZ4SIOSDAKWJKFK7ODR4FHTAB6EPW2GDX7EOMUT",
     "paging_token": "243688232397656064",
-    "created_at": "2025-06-05T..."
+    "created_at": "2025-06-05T...",
+    "result_xdr": "AAAAAAAAAJQA...",
+    "envelope_xdr": "AAAAAgAAAAB..."
   }
 }
 
@@ -327,7 +339,9 @@
     "source": "GDPISZKKDXHB7Q7DRAYBSPMR2Z6REPDHO7KKVCJTMQNVIU3K46YFUJ33",
     "paging_token": "261832536487911424",
     "source_account_sequence": "259561834523131905",
-    "created_at": "2026-01-27T15:37:16Z"
+    "created_at": "2026-01-27T15:37:16Z",
+    "result_xdr": "AAAAAAAAAJQA...",
+    "envelope_xdr": "AAAAAgAAAAB..."
   }
 }
 ```
@@ -358,7 +372,9 @@
     "source": "GDN5YRNIP7X4IHGPBAASBWMVUCVKZG4VKSLWRMYDV4MMOCVM3VH6JLCT",
     "paging_token": "261832540782972928",
     "source_account_sequence": "166132650724097100",
-    "created_at": "2026-01-27T15:37:22Z"
+    "created_at": "2026-01-27T15:37:22Z",
+    "result_xdr": "AAAAAAAAAJQA...",
+    "envelope_xdr": "AAAAAgAAAAB..."
   }
 }
 ```
@@ -390,7 +406,9 @@
     "source": "GDGUB7FUPTRENYRXYTK4BEBOUPEGRDXQJRKRCFDZW5J5OTAX7IPSPNEX",
     "paging_token": "261832536488607744",
     "source_account_sequence": "261831802048479235",
-    "created_at": "2026-01-27T15:37:16Z"
+    "created_at": "2026-01-27T15:37:16Z",
+    "result_xdr": "AAAAAAAAAJQA...",
+    "envelope_xdr": "AAAAAgAAAAB..."
   }
 }
 ```
@@ -423,7 +441,9 @@
     "source": "GCZZB7MIU6CIJT5RVFWC2YO2WGIXE3WWZKIBBXOTGBZPPCQJW66BDXET",
     "paging_token": "261832489243934720",
     "source_account_sequence": "257425187077619861",
-    "created_at": "2026-01-27T15:36:13Z"
+    "created_at": "2026-01-27T15:36:13Z",
+    "result_xdr": "AAAAAAAAAJQA...",
+    "envelope_xdr": "AAAAAgAAAAB..."
   }
 }
 ```
@@ -445,7 +465,9 @@
     "hash": "ff5e4dec52d5a8e9a04ec6d004829e069dd4a9709d0e8d2d13b9b726da00e9ec",
     "source": "GDLTH4KKMA4R2JGKA7XKI5DLHJBUT42D5RHVK6SS6YHZZLHVLCWJAYXI",
     "paging_token": "259351587284545536",
-    "created_at": "2026-01-..."
+    "created_at": "2026-01-...",
+    "result_xdr": "AAAAAAAAAJQA...",
+    "envelope_xdr": "AAAAAgAAAAB..."
   }
 }
 
@@ -480,7 +502,9 @@
     "source": "GANNOAJWUBWHMCNMWHZH7WD5SNCCBXDZXCLFWDO7T3D4OOZAVBTAOKN4",
     "paging_token": "261832540782874624",
     "source_account_sequence": "168734619223934659",
-    "created_at": "2026-01-27T15:37:22Z"
+    "created_at": "2026-01-27T15:37:22Z",
+    "result_xdr": "AAAAAAAAAJQA...",
+    "envelope_xdr": "AAAAAgAAAAB..."
   }
 }
 ```
@@ -521,7 +545,9 @@
     "source": "GCGR7ZPGGJOXYYA4P4ESKEUNRWMIWQRDT3U73JERZAOJS4DYRCEFWL6E",
     "paging_token": "261832540782866432",
     "source_account_sequence": "256172108894225424",
-    "created_at": "2026-01-27T15:37:22Z"
+    "created_at": "2026-01-27T15:37:22Z",
+    "result_xdr": "AAAAAAAAAJQA...",
+    "envelope_xdr": "AAAAAgAAAAB..."
   }
 }
 ```
@@ -568,7 +594,9 @@
     "source": "GAF4SOS6CMSY3NETECFSUQMGGZ6TXFEIQ2XPG64AKMWWGUYVNFSL7AFK",
     "paging_token": "261832536488128512",
     "source_account_sequence": "261823332372971670",
-    "created_at": "2026-01-27T15:37:16Z"
+    "created_at": "2026-01-27T15:37:16Z",
+    "result_xdr": "AAAAAAAAAJQA...",
+    "envelope_xdr": "AAAAAgAAAAB..."
   }
 }
 ```
@@ -594,7 +622,9 @@
     "source": "GDN5YRNIP7X4IHGPBAASBWMVUCVKZG4VKSLWRMYDV4MMOCVM3VH6JLCT",
     "paging_token": "261832540782972928",
     "source_account_sequence": "166132650724097100",
-    "created_at": "2026-01-27T15:37:22Z"
+    "created_at": "2026-01-27T15:37:22Z",
+    "result_xdr": "AAAAAAAAAJQA...",
+    "envelope_xdr": "AAAAAgAAAAB..."
   }
 }
 ```
@@ -620,7 +650,9 @@
     "source": "GDN5YRNIP7X4IHGPBAASBWMVUCVKZG4VKSLWRMYDV4MMOCVM3VH6JLCT",
     "paging_token": "261832540782972928",
     "source_account_sequence": "166132650724097100",
-    "created_at": "2026-01-27T15:37:22Z"
+    "created_at": "2026-01-27T15:37:22Z",
+    "result_xdr": "AAAAAAAAAJQA...",
+    "envelope_xdr": "AAAAAgAAAAB..."
   }
 }
 ```
@@ -645,7 +677,9 @@
     "source": "GDN5YRNIP7X4IHGPBAASBWMVUCVKZG4VKSLWRMYDV4MMOCVM3VH6JLCT",
     "paging_token": "261832540782972928",
     "source_account_sequence": "166132650724097100",
-    "created_at": "2026-01-27T15:37:22Z"
+    "created_at": "2026-01-27T15:37:22Z",
+    "result_xdr": "AAAAAAAAAJQA...",
+    "envelope_xdr": "AAAAAgAAAAB..."
   }
 }
 ```
@@ -679,7 +713,9 @@
     "hash": "8fcfab1d294692ef45bf0704b98783728591b723c72d4b988a0b8cbb1f6e9ae8",
     "source": "GCNVDZIHGX473FEI7IXCUAEXUJ4BGCKEMHF36VYP5EMS7PX2QBLAMTLA",
     "paging_token": "252382697903824896",
-    "created_at": "2025-09-12T..."
+    "created_at": "2025-09-12T...",
+    "result_xdr": "AAAAAAAAAJQA...",
+    "envelope_xdr": "AAAAAgAAAAB..."
   }
 }
 
@@ -700,7 +736,9 @@
     "hash": "bbfd7d492d2c865e84959e040f3b213c127c4c76f74eaa76fac0796c0db042c0",
     "source": "GAXSGZ2JM3LNWOO4WRGADISNMWO4HQLG4QBGUZRKH5ZHL3EQBGX73ICE",
     "paging_token": "210611473775775744",
-    "created_at": "2023-10-27T..."
+    "created_at": "2023-10-27T...",
+    "result_xdr": "AAAAAAAAAJQA...",
+    "envelope_xdr": "AAAAAgAAAAB..."
   }
 }
 
@@ -730,7 +768,9 @@
     "source": "GDIT5GHDFUJYDCCYMO6TV6VM5QXR36XNZPEDI7CURMQZ7EQBJI46SZWP",
     "paging_token": "261832356100812800",
     "source_account_sequence": "157404181961912111",
-    "created_at": "2026-01-27T15:33:12Z"
+    "created_at": "2026-01-27T15:33:12Z",
+    "result_xdr": "AAAAAAAAAJQA...",
+    "envelope_xdr": "AAAAAgAAAAB..."
   }
 }
 ```
@@ -760,7 +800,9 @@
     "source": "GD75PZMUQ6BJKUISFMKLJLJ2QYPPRORRTZQCAWYUO77RPHECLEDVSOTX",
     "paging_token": "261832523603750912",
     "source_account_sequence": "168283282583065771",
-    "created_at": "2026-01-27T15:36:59Z"
+    "created_at": "2026-01-27T15:36:59Z",
+    "result_xdr": "AAAAAAAAAJQA...",
+    "envelope_xdr": "AAAAAgAAAAB..."
   }
 }
 ```
@@ -789,7 +831,9 @@
     "source": "GB2ZUCM6YWQET4HHLJKMQP7FGUES4TF32VCUYHVNICGNVISAXBSARGUN",
     "paging_token": "257886075723632640",
     "source_account_sequence": "197738159709094078",
-    "created_at": "2025-11-27T16:59:03Z"
+    "created_at": "2025-11-27T16:59:03Z",
+    "result_xdr": "AAAAAAAAAJQA...",
+    "envelope_xdr": "AAAAAgAAAAB..."
   }
 }
 ```
@@ -814,7 +858,9 @@
     "source": "GDRI3GQG6AK3NKSVJSUGQOYWEUDIGEZCGM3JS2Q7UCFNNMHBL52Q25NC",
     "paging_token": "261832540783890432",
     "source_account_sequence": "259186630475169261",
-    "created_at": "2026-01-27T15:37:22Z"
+    "created_at": "2026-01-27T15:37:22Z",
+    "result_xdr": "AAAAAAAAAJQA...",
+    "envelope_xdr": "AAAAAgAAAAB..."
   }
 }
 ```
@@ -903,4 +949,6 @@
 - `source_amount` — реально потраченная сумма source asset (только для `path_payment_strict_receive`)
 - `dest_amount` — реально полученная сумма dest asset (только для `path_payment_strict_send`)
 - `created_offer_id` — ID созданного оффера (только для `manage_sell_offer`/`manage_buy_offer` когда `offerId: "0"` и ордер не был полностью исполнен)
+- `result_xdr` — XDR-encoded результат транзакции
+- `envelope_xdr` — XDR-encoded конверт транзакции (содержит подписи и оригинальную транзакцию)
 - Deprecated операции (7, 9) больше не используются в сети

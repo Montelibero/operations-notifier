@@ -602,10 +602,12 @@ Notifications are sent as JSON-encoded POST requests with the following format:
     "paging_token": "757838947790643264",
     "source_account_sequence": "7196037745321120376",
     "created_at": "2018-05-01T16:45:37Z",
-    "memo": { 
-      "type": "text", 
+    "memo": {
+      "type": "text",
       "value": "105683157"
-    }
+    },
+    "result_xdr": "AAAAAAAAAJQA...",
+    "envelope_xdr": "AAAAAgAAAAB..."
   }
 }
 ```
