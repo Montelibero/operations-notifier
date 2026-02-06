@@ -547,7 +547,8 @@ function parseTransaction(transaction) {
         source_account_sequence: transaction.source_account_sequence,
         created_at: transaction.created_at,
         memo: processMemo(xdrTx.memo),
-        result_xdr: transaction.result_xdr
+        result_xdr: transaction.result_xdr,
+        envelope_xdr: transaction.envelope_xdr
     }
 
     if (xdrTx.timeBounds) {
