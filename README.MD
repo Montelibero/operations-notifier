@@ -502,6 +502,41 @@ Each subscription object may include:
 - `sent` — delivered notifications count
 - `created` / `updated` — timestamps
 
+### Get recent delivery log
+
+```
+GET /api/delivery-log
+```
+
+Returns the last 50 webhook deliveries (stored in memory, resets on restart).
+Admin users see all entries; regular users see only deliveries for their own subscriptions.
+
+Response example:
+
+```
+[
+  {
+    "timestamp": "2026-02-06T20:44:09.955Z",
+    "status": "ok",
+    "subscriptionId": "698626823b066f0320172af7",
+    "pubkey": "JHG675FD3wLJ76GH4dSKY",
+    "reaction_url": "http://example.com/webhook",
+    "notificationId": "698651fc0c95143647a0580c",
+    "payload": {
+      "id": "698651fc0c95143647a0580c",
+      "subscription": "698626823b066f0320172af7",
+      "type": "operation",
+      "created": "2026-02-06T20:41:32.405Z",
+      "sent": "2026-02-06T20:44:09.955Z",
+      "operation": { "..." : "..." },
+      "transaction": { "..." : "..." }
+    }
+  }
+]
+```
+
+Error entries also include an `error` field (e.g. `"HTTP 500"`, `"ECONNREFUSED"`).
+
 ## Admin UI
 
 The service includes a web-based admin interface for easy subscription management and system monitoring.
