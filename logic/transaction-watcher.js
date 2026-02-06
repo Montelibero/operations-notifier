@@ -72,6 +72,10 @@ function fetchTransactions(cursor, ledgerSequence = undefined, watcher = null) {
                 } else if (cursor && recordCount === transactionsBatchSize && watcher) {
                     const lastTx = result.records[recordCount - 1]
                     const ledger = lastTx.ledger_attr || '?'
+                    // Update lastLedgerSeen if we see a newer ledger
+                    if (typeof lastTx.ledger_attr === 'number' && lastTx.ledger_attr > (watcher.lastLedgerSeen || 0)) {
+                        watcher.lastLedgerSeen = lastTx.ledger_attr
+                    }
                     const lag = (typeof watcher.lastLedgerSeen === 'number' && typeof lastTx.ledger_attr === 'number')
                         ? watcher.lastLedgerSeen - lastTx.ledger_attr
                         : '?'
