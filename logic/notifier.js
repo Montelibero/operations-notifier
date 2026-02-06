@@ -154,7 +154,7 @@ class Notifier {
         //prepare data
         const data = {
             id: notification.id,
-            subscription: notification.subscription,
+            subscription: subscription.id,
             type: 'operation',
             created: notification.created,
             sent: new Date(),
