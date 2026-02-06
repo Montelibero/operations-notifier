@@ -102,6 +102,31 @@
             font-weight: 500;
         }
 
+        .badge-asset {
+            background-color: #fef3c7;
+            color: #92400e;
+            border: 1px solid #fde68a;
+            font-weight: 500;
+            font-size: 0.75rem;
+        }
+
+        .sub-row {
+            cursor: pointer;
+        }
+        .sub-row:hover {
+            background-color: #f8fafc;
+        }
+
+        .sub-details {
+            background-color: #f8fafc;
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+            font-size: 0.8rem;
+            white-space: pre-wrap;
+            word-break: break-all;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
         /* Bottom Log Console */
         .console-drawer {
             position: fixed;
@@ -259,33 +284,45 @@
                     </tr>
                 </thead>
                 <tbody v-if="subscriptions.length > 0">
-                    <tr v-for="sub in subscriptions" :key="sub.id">
-                        <td class="text-center">
-                            <span v-if="sub.lost_notifications === 0" title="Healthy" class="text-success fs-5">●</span>
-                            <span v-else title="Lost Notifications" class="text-warning fs-5">⚠️</span>
-                        </td>
-                        <td>
-                            <div class="d-flex flex-column" style="font-size: 0.85rem">
-                                <span class="text-muted small" title="Subscription ID">{{ shortStr(sub.id) }}</span>
-                                <span class="fw-bold text-truncate-cell" :title="sub.account" style="max-width: 200px;">
-                                    {{ sub.account || 'All Accounts' }}
-                                </span>
-                            </div>
-                        </td>
-                        <td>
-                            <div class="text-truncate-cell" :title="sub.reaction_url" style="max-width: 250px;">
-                                <a :href="sub.reaction_url" target="_blank" class="text-decoration-none">{{ sub.reaction_url }}</a>
-                            </div>
-                        </td>
-                        <td>
-                            <span v-for="op in sub.operation_types" :key="op" class="badge badge-op">{{ op }}</span>
-                        </td>
-                        <td class="text-end">
-                            <button @click="deleteSubscription(sub.id)" class="btn btn-sm btn-outline-danger" title="Удалить">
-                                🗑️
-                            </button>
-                        </td>
-                    </tr>
+                    <template v-for="sub in subscriptions" :key="sub.id">
+                        <tr class="sub-row" @click="toggleDetails(sub.id)">
+                            <td class="text-center">
+                                <span v-if="sub.lost_notifications === 0" title="Healthy" class="text-success fs-5">●</span>
+                                <span v-else title="Lost Notifications" class="text-warning fs-5">⚠️</span>
+                            </td>
+                            <td>
+                                <div class="d-flex flex-column" style="font-size: 0.85rem">
+                                    <span class="text-muted small" title="Subscription ID">{{ shortStr(sub.id) }}</span>
+                                    <div class="d-flex align-items-center gap-1">
+                                        <span class="fw-bold text-truncate-cell" :title="sub.account" style="max-width: 200px;">
+                                            {{ sub.account || 'All Accounts' }}
+                                        </span>
+                                        <span v-if="sub.asset_code" class="badge badge-asset" :title="sub.asset_code + (sub.asset_issuer ? ' / ' + sub.asset_issuer : '')">
+                                            {{ sub.asset_code }}
+                                        </span>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                <div class="text-truncate-cell" :title="sub.reaction_url" style="max-width: 250px;">
+                                    <a :href="sub.reaction_url" target="_blank" class="text-decoration-none" @click.stop>{{ sub.reaction_url }}</a>
+                                </div>
+                            </td>
+                            <td>
+                                <span v-for="op in sub.operation_types" :key="op" class="badge badge-op">{{ op }}</span>
+                            </td>
+                            <td class="text-end">
+                                <button @click.stop="deleteSubscription(sub.id)" class="btn btn-sm btn-outline-danger" title="Удалить">
+                                    🗑️
+                                </button>
+                            </td>
+                        </tr>
+                        <tr v-if="expandedSub === sub.id">
+                            <td colspan="5" class="p-0">
+                                <div class="sub-details p-3">{{ JSON.stringify(sub, null, 2) }}</div>
+                            </td>
+                        </tr>
+                    </template>
                 </tbody>
                 <tbody v-else>
                     <tr>
@@ -380,6 +417,7 @@
             const minConsole = ref(false);
             const logs = ref([]);
             const consoleBody = ref(null);
+            const expandedSub = ref(null);
             
             // Data
             const subscriptions = ref([]);
@@ -419,6 +457,10 @@
                 if (!str) return '';
                 if (str.length < 8) return str;
                 return str.substring(0, 8) + '...';
+            };
+
+            const toggleDetails = (id) => {
+                expandedSub.value = expandedSub.value === id ? null : id;
             };
 
             const getMethodColor = (m) => {
@@ -517,10 +559,10 @@
 
             return {
                 config, loading, isConnected, showConfig, minConsole, logs, consoleBody,
-                subscriptions, newSub,
+                subscriptions, newSub, expandedSub,
                 showStatusModal, statusData, checkStatus,
                 saveConfig, createSubscription, deleteSubscription, getSubscriptions,
-                shortStr, getMethodColor
+                shortStr, getMethodColor, toggleDetails
             };
         }
     }).mount('#app');
