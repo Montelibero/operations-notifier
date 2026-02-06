@@ -57,8 +57,8 @@ function isValidAsset(asset) {
  */
 function assetsEqual(asset1, asset2) {
     if (!asset1 || !asset2 || !isValidAsset(asset1) || !isValidAsset(asset2)) return false
-    if (asset1.type !== asset2.type) return false
-    return asset1.code === asset2.code && asset1.issuer === asset2.issuer
+    if (asset1.asset_type !== asset2.asset_type) return false
+    return asset1.asset_code === asset2.asset_code && asset1.asset_issuer === asset2.asset_issuer
 }
 
 /**
