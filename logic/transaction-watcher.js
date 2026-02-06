@@ -298,6 +298,16 @@ class TransactionWatcher {
     watch() {
         if (this.releaseStream) return
 
+        // Fetch current ledger for lag calculation during catch-up
+        horizon.ledgers().order('desc').limit(1).call()
+            .then(({records}) => {
+                if (records && records[0]) {
+                    this.lastLedgerSeen = records[0].sequence
+                    logger.info(`Current network ledger: ${this.lastLedgerSeen}`)
+                }
+            })
+            .catch(() => {}) // non-critical
+
         // Check if cursor reset is requested
         if (config.resetCursor) {
             logger.info('RESET_CURSOR is set, ignoring saved cursor and starting live stream')
