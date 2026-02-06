@@ -121,7 +121,7 @@ class TransactionWatcher {
         // Spawn multiple workers
         const workersToStart = Math.min(this.maxTxWorkers, transactions.length)
         for (let i = 0; i < workersToStart; i++) {
-            setImmediate(() => this.processQueue())
+            setTimeout(() => this.processQueue(), 0)
         }
     }
 
@@ -140,7 +140,7 @@ class TransactionWatcher {
                 .catch(err => console.error(err))
                 .finally(() => {
                     this.ledgerInProgress--
-                    setImmediate(() => this.processLedgerQueue())
+                    setTimeout(() => this.processLedgerQueue(), 0)
                 })
         }
     }
@@ -161,7 +161,7 @@ class TransactionWatcher {
                 .catch(err => console.error('Transaction processing error:', err))
                 .finally(() => {
                     this.txInProgress--
-                    setImmediate(() => this.processQueue())
+                    setTimeout(() => this.processQueue(), 0)
                 })
         }
     }
@@ -413,7 +413,7 @@ class TransactionWatcher {
                     this.enqueue(records)
                     
                     // Планируем следующую порцию
-                    setImmediate(() => this.trackTransactions())
+                    setTimeout(() => this.trackTransactions(), 0)
                 }
             })
             .catch(err => {

@@ -48,7 +48,7 @@ class Notifier {
         if (!this.observer.observing) return
         let subscriptionToProcess = this.getSubscriptionToProcess()
         if (!subscriptionToProcess) return
-        setImmediate(() => {
+        setTimeout(() => {
             this.runSubscriptionNotifierThread(subscriptionToProcess)
             this.startNewNotifierThread()
         })
@@ -82,7 +82,7 @@ class Notifier {
                 return this.sendNotification(notification, subscription)
                     .then(() => {
                         this.inProgress.delete(subscription.id)
-                        setImmediate(() => this.startNewNotifierThread())
+                        setTimeout(() => this.startNewNotifierThread(), 0)
                     })
             })
     }
