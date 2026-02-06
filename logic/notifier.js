@@ -28,6 +28,20 @@ class Notifier {
     constructor(observer) {
         this.observer = observer
         this.inProgress = new Set()
+        this.deliveryLog = []
+        this.maxDeliveryLogSize = 50
+    }
+
+    addDeliveryLog(entry) {
+        this.deliveryLog.unshift(entry)
+        if (this.deliveryLog.length > this.maxDeliveryLogSize) {
+            this.deliveryLog.length = this.maxDeliveryLogSize
+        }
+    }
+
+    getDeliveryLog(pubkey) {
+        if (!pubkey) return this.deliveryLog
+        return this.deliveryLog.filter(e => e.pubkey === pubkey)
     }
 
     startNewNotifierThread() {
@@ -162,8 +176,34 @@ class Notifier {
             }
         })
         //TODO: verify the response to prevent third-party resources spoofing
-            .then(() => this.markAsProcessed(notification, subscription))
-            .catch(err => this.handleProcessingError(err, notification, subscription))
+            .then(() => {
+                this.addDeliveryLog({
+                    timestamp: new Date().toISOString(),
+                    status: 'ok',
+                    subscriptionId: subscription.id,
+                    pubkey: subscription.pubkey,
+                    reaction_url: subscription.reaction_url,
+                    notificationId: notification.id,
+                    payload: data
+                })
+                return this.markAsProcessed(notification, subscription)
+            })
+            .catch(err => {
+                const errMsg = err.response
+                    ? `HTTP ${err.response.status}`
+                    : (err.code || err.message)
+                this.addDeliveryLog({
+                    timestamp: new Date().toISOString(),
+                    status: 'error',
+                    error: errMsg,
+                    subscriptionId: subscription.id,
+                    pubkey: subscription.pubkey,
+                    reaction_url: subscription.reaction_url,
+                    notificationId: notification.id,
+                    payload: data
+                })
+                return this.handleProcessingError(err, notification, subscription)
+            })
             .then(() => {
                 subscription.updated = new Date()
                 return storage.saveSubscription(subscription)

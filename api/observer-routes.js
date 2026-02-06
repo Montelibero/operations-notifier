@@ -143,6 +143,16 @@ module.exports = function (app) {
             .catch(next)
     })
 
+    //get recent delivery log
+    app.get('/api/delivery-log', auth.userRequiredMiddleware, (req, res) => {
+        const isAdmin = auth.isInRole(req, roles.ADMIN)
+        const pubkey = isAdmin ? null : getUserPubKey(req)
+        const log = observer.notifier
+            ? observer.notifier.getDeliveryLog(pubkey)
+            : []
+        res.json(log)
+    })
+
     //block modifications
     app.put('/api/subscription', (req, res) => res.status(405).json({
         error: 'Subscription cannot be modified'

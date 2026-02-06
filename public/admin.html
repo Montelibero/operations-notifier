@@ -336,6 +336,55 @@
         </div>
     </div>
 
+    <!-- Delivery Log -->
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span>Последние отправки ({{ deliveryLog.length }})</span>
+            <button @click="getDeliveryLog" class="btn btn-sm btn-outline-primary">🔄 Обновить</button>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th style="width: 60px">Status</th>
+                        <th>Time</th>
+                        <th>Subscription</th>
+                        <th>Notification</th>
+                        <th>URL</th>
+                    </tr>
+                </thead>
+                <tbody v-if="deliveryLog.length > 0">
+                    <template v-for="(entry, idx) in deliveryLog" :key="idx">
+                        <tr class="sub-row" @click="toggleDeliveryDetails(idx)">
+                            <td class="text-center">
+                                <span v-if="entry.status === 'ok'" class="badge bg-success">OK</span>
+                                <span v-else class="badge bg-danger" :title="entry.error">ERR</span>
+                            </td>
+                            <td style="font-size: 0.85rem">{{ formatTime(entry.timestamp) }}</td>
+                            <td><span class="text-muted small">{{ shortStr(entry.subscriptionId) }}</span></td>
+                            <td><span class="text-muted small">{{ shortStr(entry.notificationId) }}</span></td>
+                            <td>
+                                <div class="text-truncate-cell" :title="entry.reaction_url" style="max-width: 200px;">
+                                    {{ entry.reaction_url }}
+                                </div>
+                            </td>
+                        </tr>
+                        <tr v-if="expandedDelivery === idx">
+                            <td colspan="5" class="p-0">
+                                <div class="sub-details p-3">{{ JSON.stringify(entry.payload, null, 2) }}</div>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+                <tbody v-else>
+                    <tr>
+                        <td colspan="5" class="text-center py-4 text-muted">Нет данных (сбрасывается при рестарте)</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
     <!-- Status Modal (MOVED INSIDE #app) -->
     <div v-if="showStatusModal" class="modal-backdrop fade show"></div>
     <div v-if="showStatusModal" class="modal fade show d-block" tabindex="-1">
@@ -418,6 +467,8 @@
             const logs = ref([]);
             const consoleBody = ref(null);
             const expandedSub = ref(null);
+            const expandedDelivery = ref(null);
+            const deliveryLog = ref([]);
             
             // Data
             const subscriptions = ref([]);
@@ -437,7 +488,8 @@
                 
                 if (savedToken) {
                     isConnected.value = true;
-                    getSubscriptions(); // Авто-загрузка при старте
+                    getSubscriptions();
+                    getDeliveryLog();
                 } else {
                     showConfig.value = true;
                 }
@@ -461,6 +513,15 @@
 
             const toggleDetails = (id) => {
                 expandedSub.value = expandedSub.value === id ? null : id;
+            };
+
+            const toggleDeliveryDetails = (idx) => {
+                expandedDelivery.value = expandedDelivery.value === idx ? null : idx;
+            };
+
+            const formatTime = (ts) => {
+                if (!ts) return '';
+                return new Date(ts).toLocaleTimeString();
             };
 
             const getMethodColor = (m) => {
@@ -531,7 +592,16 @@
                 if (Array.isArray(data)) {
                     subscriptions.value = data;
                 } else {
-                    subscriptions.value = []; // Fallback
+                    subscriptions.value = [];
+                }
+            };
+
+            const getDeliveryLog = async () => {
+                const data = await request('/api/delivery-log');
+                if (Array.isArray(data)) {
+                    deliveryLog.value = data;
+                } else {
+                    deliveryLog.value = [];
                 }
             };
 
@@ -559,9 +629,10 @@
 
             return {
                 config, loading, isConnected, showConfig, minConsole, logs, consoleBody,
-                subscriptions, newSub, expandedSub,
+                subscriptions, newSub, expandedSub, expandedDelivery, deliveryLog,
                 showStatusModal, statusData, checkStatus,
                 saveConfig, createSubscription, deleteSubscription, getSubscriptions,
+                getDeliveryLog, toggleDeliveryDetails, formatTime,
                 shortStr, getMethodColor, toggleDetails
             };
         }

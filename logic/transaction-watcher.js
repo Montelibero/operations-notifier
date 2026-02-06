@@ -33,14 +33,14 @@ function getHeader(headers, name) {
     return undefined
 }
 
-function fetchTransactions(cursor, ledgerSequence = undefined) {
+function fetchTransactions(cursor, ledgerSequence = undefined, watcher = null) {
     let builder = horizon
         .transactions()
-    
+
     if (ledgerSequence !== undefined) {
         builder = builder.forLedger(ledgerSequence)
     }
-    
+
     if (cursor !== undefined && cursor !== null) {
         try {
             // Ensure cursor is a valid string and attempt to parse as BigInt to validate
@@ -59,19 +59,25 @@ function fetchTransactions(cursor, ledgerSequence = undefined) {
             cursor = undefined
         }
     }
-    
+
     builder = builder.order('asc').limit(transactionsBatchSize)
     const start = Date.now()
-    
+
     return builder.call()
         .then(result => {
-            // Логируем только если получили значительное количество транзакций или это первый запрос
             const recordCount = result.records?.length || 0;
             if (recordCount > 50 || start === 0) {
                 if (ledgerSequence) {
                     logger.info(`Fetched ${recordCount} txs from ledger ${ledgerSequence}`)
+                } else if (cursor && recordCount === transactionsBatchSize && watcher) {
+                    const lastTx = result.records[recordCount - 1]
+                    const ledger = lastTx.ledger_attr || '?'
+                    const lag = (typeof watcher.lastLedgerSeen === 'number' && typeof lastTx.ledger_attr === 'number')
+                        ? watcher.lastLedgerSeen - lastTx.ledger_attr
+                        : '?'
+                    const queue = watcher.queue ? watcher.queue.length : 0
+                    logger.info(`Fetched ${recordCount} txs (ledger ${ledger}, lag ${lag}, queue ${queue})`)
                 } else if (cursor) {
-                    // Выводим логи только раз в несколько запросов для уменьшения шума
                     logger.info(`Fetched ${recordCount} txs`)
                 }
             }
@@ -353,7 +359,7 @@ class TransactionWatcher {
                 logger.debug(`Fetch count: ${this.fetchCount}, still using cursor: ${this.cursor.substring(0, 8)}...`)
         }
         
-        fetchTransactions(this.cursor)
+        fetchTransactions(this.cursor, undefined, this)
             .then(({records}) => {
                 if (!records || !records.length) {
                     logger.debug('No records found, switching to live stream')
