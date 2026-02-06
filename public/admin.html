@@ -404,9 +404,11 @@
                         
                         <h6 class="text-muted text-uppercase small fw-bold mt-4 mb-3">Streaming</h6>
                         <div v-if="statusData.stream">
-                            <div class="kv-row"><span class="kv-key">Last Ledger</span><span class="kv-val">{{ statusData.stream.lastLedger }}</span></div>
+                            <div class="kv-row"><span class="kv-key">Last Ledger (seen)</span><span class="kv-val">{{ statusData.stream.lastLedgerSeen ?? '—' }}</span></div>
+                            <div class="kv-row"><span class="kv-key">Last Ledger (processed)</span><span class="kv-val">{{ statusData.stream.lastLedgerProcessed ?? '—' }}</span></div>
+                            <div class="kv-row"><span class="kv-key">Lag</span><span class="kv-val" :class="statusData.stream.ledgerLag > 10 ? 'text-danger' : 'text-success'">{{ statusData.stream.ledgerLag ?? '—' }}</span></div>
                             <div class="kv-row"><span class="kv-key">Last Tx</span><span class="kv-val text-truncate" style="max-width: 200px">{{ statusData.stream.lastTxHash }}</span></div>
-                            <div class="kv-row"><span class="kv-key">Lag</span><span class="kv-val">{{ statusData.stream.ledgerLag }}</span></div>
+                            <div class="kv-row"><span class="kv-key">Queue</span><span class="kv-val">{{ statusData.stream.queueLength ?? 0 }}</span></div>
                         </div>
                     </div>
                     <div v-else class="text-center py-4">
