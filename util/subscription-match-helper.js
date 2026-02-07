@@ -28,7 +28,7 @@ function matches(subscription, operation) {
     }
     if (subscription.asset_type) {
         const assetToFilter = parseAsset(subscription)
-        return assetsEqual(assetToFilter, parseAsset(operation)) || assetsEqual(assetToFilter, parseAsset(operation, 'counter_'))
+        return assetsEqual(assetToFilter, operation.asset) || assetsEqual(assetToFilter, operation.source_asset)
     }
     return true
 }
