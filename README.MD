@@ -69,15 +69,21 @@ Effectively any other platforms where you can run NodeJS and MongoDB.
 
 #### Docker
 
-Docker image by [@sgehrman](https://github.com/sgehrman) can be found
-[here](https://github.com/StellarKit/stellar-notifier-docker).
+This repository includes `Dockerfile` and `docker-compose.yml`.
+
+Build and run locally:
+
+```
+docker build -t stellar_notifier:latest .
+docker compose up -d
+```
 
 ## Installation
 
 1\. Clone the repository.
 
 ```
-git clone https://github.com/stellar-expert/operations-notifier
+git clone https://github.com/Montelibero/operations-notifier
 ```
 
 2\. Install required NPM packages.
