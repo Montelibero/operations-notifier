@@ -450,8 +450,72 @@ The same endpoint accepts an array of subscription objects for batch creation.
 All subscriptions are created in a single database operation, which is
 significantly faster than creating them one by one.
 
-**Request body**: an array of subscription objects (same parameters as single
-creation above).
+**Important**: the request body must be a JSON **array at the root level**, not
+an object with a nested array. Each element has the same parameters as single
+creation above. Authorization is passed via the `Authorization` header as usual.
+
+Request example:
+
+```
+POST /api/subscription
+Authorization: <token>
+Content-Type: application/json
+
+[
+  {
+    "reaction_url": "http://example.com/webhook",
+    "account": "GCFX...ACCOUNT1...",
+    "operation_types": [0, 1]
+  },
+  {
+    "reaction_url": "http://example.com/webhook",
+    "account": "GDLV...ACCOUNT2...",
+    "operation_types": [0, 1]
+  },
+  {
+    "reaction_url": "http://example.com/webhook",
+    "account": "GDUQ...ACCOUNT3...",
+    "asset_code": "EURMTL",
+    "asset_issuer": "GACKTN5DAZGWXRWB2WLM6OPBDHAMT6SJNGLJZPQMEZBUR4JUGBX2UK7V"
+  }
+]
+```
+
+Response: an array of created/existing subscription objects in the same order
+as the request.
+
+```
+[
+  {
+    "id": "5ae88ef89a9e5d4a589cf27d",
+    "pubkey": null,
+    "status": 0,
+    "reaction_url": "http://example.com/webhook",
+    "account": "GCFX...ACCOUNT1...",
+    "operation_types": [0, 1],
+    "lost_notifications": 0
+  },
+  {
+    "id": "5ae88f54397cbf2474ef27e1",
+    "pubkey": null,
+    "status": 0,
+    "reaction_url": "http://example.com/webhook",
+    "account": "GDLV...ACCOUNT2...",
+    "operation_types": [0, 1],
+    "lost_notifications": 0
+  },
+  {
+    "id": "5ae89a12397cbf2474ef28b3",
+    "pubkey": null,
+    "status": 0,
+    "reaction_url": "http://example.com/webhook",
+    "account": "GDUQ...ACCOUNT3...",
+    "asset_code": "EURMTL",
+    "asset_issuer": "GACKTN5DAZGWXRWB2WLM6OPBDHAMT6SJNGLJZPQMEZBUR4JUGBX2UK7V",
+    "lost_notifications": 0
+  }
+]
+```
 
 Limits and deduplication:
 - Maximum request body size: 2MB (~10000 subscriptions per request).
@@ -460,25 +524,6 @@ Limits and deduplication:
 - Subscription limits (`maxActiveSubscriptions`, `maxActiveSubscriptionsPerUser`)
   are checked once for the entire batch.
 - An empty array returns 400 Bad Request.
-
-Response example:
-
-```
-[
-  {
-    "id": "5ae88ef89a9e5d4a589cf27d",
-    "reaction_url": "http://localhost:4022/test/reaction1",
-    "operation_types": [0, 1],
-    ...
-  },
-  {
-    "id": "5ae88f54397cbf2474ef27e1",
-    "reaction_url": "http://localhost:4022/test/reaction2",
-    "operation_types": [2],
-    ...
-  }
-]
-```
 
 ### Remove subscription
 
