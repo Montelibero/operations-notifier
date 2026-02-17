@@ -79,6 +79,15 @@ class MemoryStorageProvider extends StorageProvider {
         return Promise.resolve(subscription)
     }
 
+    saveSubscriptions(subscriptions) {
+        for (const sub of subscriptions) {
+            ensureId(sub)
+            if (sub.lost_notifications === undefined) sub.lost_notifications = 0
+            repository.subscriptions.push(sub)
+        }
+        return Promise.resolve(subscriptions)
+    }
+
     removeAllSubscriptions() {
         repository.subscriptions = []
         repository.notifications = []

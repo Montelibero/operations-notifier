@@ -140,6 +140,68 @@ describe('API', function () {
             })
         })
 
+        describe('/POST bulk subscriptions', () => {
+            it('it should POST an array of 3 subscriptions', async () => {
+                const data = [
+                    {reaction_url: 'http://fake.url/bulk1', operation_types: [0]},
+                    {reaction_url: 'http://fake.url/bulk2', operation_types: [1]},
+                    {reaction_url: 'http://fake.url/bulk3', operation_types: [2]}
+                ]
+                const res = await axiosInstance.post('/api/subscription', data, {
+                    headers: {authorization: config.adminAuthenticationToken}
+                })
+                expect(res.status).to.equal(200)
+                expect(res.data).to.be.an('array')
+                expect(res.data.length).to.equal(3)
+                const ids = res.data.map(s => s.id)
+                expect(new Set(ids).size).to.equal(3)
+            })
+
+            it('it should deduplicate within batch', async () => {
+                const sub = {reaction_url: 'http://fake.url/bulk-dedup', operation_types: [0]}
+                const data = [sub, sub]
+                const res = await axiosInstance.post('/api/subscription', data, {
+                    headers: {authorization: config.adminAuthenticationToken}
+                })
+                expect(res.status).to.equal(200)
+                expect(res.data).to.be.an('array')
+                expect(res.data.length).to.equal(2)
+                expect(res.data[0].id).to.equal(res.data[1].id)
+            })
+
+            it('it should return existing subscriptions for duplicates against existing', async () => {
+                const sub = {reaction_url: 'http://fake.url/bulk-exist', operation_types: [0]}
+                // create one first
+                const res1 = await axiosInstance.post('/api/subscription', sub, {
+                    headers: {authorization: config.adminAuthenticationToken}
+                })
+                const existingId = res1.data.id
+
+                // batch with existing + new
+                const data = [
+                    sub,
+                    {reaction_url: 'http://fake.url/bulk-exist-new', operation_types: [1]}
+                ]
+                const res2 = await axiosInstance.post('/api/subscription', data, {
+                    headers: {authorization: config.adminAuthenticationToken}
+                })
+                expect(res2.status).to.equal(200)
+                expect(res2.data.length).to.equal(2)
+                expect(res2.data[0].id).to.equal(existingId)
+                expect(res2.data[1].id).to.not.equal(existingId)
+            })
+
+            it('it should reject empty array with 400', async () => {
+                try {
+                    await axiosInstance.post('/api/subscription', [], {
+                        headers: {authorization: config.adminAuthenticationToken}
+                    })
+                } catch (err) {
+                    expect(err.response.status).to.equal(400)
+                }
+            })
+        })
+
         describe('/GET subscriptions', () => {
             it('it should GET all the subscriptions', async () => {
                 const res = await axiosInstance.get('/api/subscription', {
@@ -149,7 +211,7 @@ describe('API', function () {
                 })
                 expect(res.status).to.equal(200)
                 expect(res.data).to.be.an('array')
-                expect(res.data.length).to.be.eql(5)
+                expect(res.data.length).to.be.eql(11)
                 subscriptions = res.data
             })
 

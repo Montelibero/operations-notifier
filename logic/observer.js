@@ -18,6 +18,11 @@ function arraysEqual(a, b) {
 
 const DEDUP_FIELDS = ['pubkey', 'reaction_url', 'account', 'memo', 'asset_type', 'asset_code', 'asset_issuer']
 
+function subscriptionHash(s) {
+    const opTypes = s.operation_types ? [...s.operation_types].sort().join(',') : ''
+    return JSON.stringify(DEDUP_FIELDS.map(f => s[f] || '').concat(opTypes))
+}
+
 /**
  *
  */
@@ -56,6 +61,14 @@ class Observer {
         return this.subscriptions.filter(s => s.pubkey === user.pubkey).length
     }
 
+    _buildDedupSet() {
+        const set = new Set()
+        for (const s of this.subscriptions) {
+            set.add(subscriptionHash(s))
+        }
+        return set
+    }
+
     subscribe(subscriptionParams, user) {
         return this.loadSubscriptions()
             .then(() => {
@@ -66,13 +79,11 @@ class Observer {
                 if (config.authorization && maxPerUser && this.getUserActiveSubscriptionsCount(user) >= maxPerUser) {
                     return Promise.reject(errors.forbidden('Max active subscriptions exceeded.'))
                 }
-                const existing = this.subscriptions.find(s => {
-                    for (const field of DEDUP_FIELDS) {
-                        if ((s[field] || '') !== (subscriptionParams[field] || '')) return false
-                    }
-                    return arraysEqual(s.operation_types, subscriptionParams.operation_types)
-                })
-                if (existing) return existing
+                const hash = subscriptionHash(subscriptionParams)
+                const dedupSet = this._buildDedupSet()
+                if (dedupSet.has(hash)) {
+                    return this.subscriptions.find(s => subscriptionHash(s) === hash)
+                }
                 return storage.createSubscription(subscriptionParams, user)
             })
             .then(subscription => {
@@ -82,6 +93,65 @@ class Observer {
                     logger.info(`Subscription created: id=${subscription.id} pubkey=${subscription.pubkey || 'anonymous'}`)
                 }
                 return subscription
+            })
+    }
+
+    subscribeBatch(paramsArray, user) {
+        if (!Array.isArray(paramsArray) || paramsArray.length === 0) {
+            return Promise.reject(errors.badRequest('Expected a non-empty array of subscription params.'))
+        }
+        return this.loadSubscriptions()
+            .then(() => {
+                const totalAfter = this.getActiveSubscriptionsCount() + paramsArray.length
+                if (totalAfter > config.maxActiveSubscriptions) {
+                    return Promise.reject(errors.forbidden('Max active subscriptions exceeded.'))
+                }
+                const maxPerUser = config.maxActiveSubscriptionsPerUser || config.maxUserActiveSubscriptions
+                if (config.authorization && maxPerUser) {
+                    const userCount = this.getUserActiveSubscriptionsCount(user)
+                    if (userCount + paramsArray.length > maxPerUser) {
+                        return Promise.reject(errors.forbidden('Max active subscriptions exceeded.'))
+                    }
+                }
+
+                const dedupSet = this._buildDedupSet()
+                const results = []
+                const toCreate = []
+                const batchHashMap = new Map() // hash → index in toCreate
+
+                for (let i = 0; i < paramsArray.length; i++) {
+                    const params = paramsArray[i]
+                    const hash = subscriptionHash(params)
+                    if (dedupSet.has(hash)) {
+                        // existing subscription or within-batch duplicate
+                        const existing = this.subscriptions.find(s => subscriptionHash(s) === hash)
+                        if (existing) {
+                            results.push({existing})
+                        } else {
+                            // within-batch duplicate — reference first occurrence
+                            results.push({createIndex: batchHashMap.get(hash)})
+                        }
+                    } else {
+                        dedupSet.add(hash)
+                        batchHashMap.set(hash, toCreate.length)
+                        results.push({createIndex: toCreate.length})
+                        toCreate.push(params)
+                    }
+                }
+
+                if (toCreate.length === 0) {
+                    return results.map(r => r.existing)
+                }
+
+                return storage.createSubscriptions(toCreate, user)
+                    .then(created => {
+                        for (const sub of created) {
+                            this.subscriptions.push(sub)
+                            this.subscriptionIndex.add(sub)
+                            logger.info(`Subscription created: id=${sub.id} pubkey=${sub.pubkey || 'anonymous'}`)
+                        }
+                        return results.map(r => r.existing != null ? r.existing : created[r.createIndex])
+                    })
             })
     }
 

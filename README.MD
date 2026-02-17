@@ -306,7 +306,7 @@ Admin requests can use `Authorization: <ADMIN_AUTHENTICATION_TOKEN>` in any mode
 
 ```
 {
-  "version": "0.4.3",
+  "version": "0.7.0",
   "uptime": "3h 10m 42s",
   "publicKey": "G...SIGNER...",
   "observing": true,
@@ -439,6 +439,46 @@ Response example:
 ``` 
 
 The `id` value from response can be used to delete the subscription.
+
+### Bulk create subscriptions
+
+```
+POST /api/subscription
+```
+
+The same endpoint accepts an array of subscription objects for batch creation.
+All subscriptions are created in a single database operation, which is
+significantly faster than creating them one by one.
+
+**Request body**: an array of subscription objects (same parameters as single
+creation above).
+
+Limits and deduplication:
+- Maximum request body size: 2MB (~10000 subscriptions per request).
+- Duplicates within the batch are deduplicated automatically.
+- Subscriptions that already exist are returned as-is (not recreated).
+- Subscription limits (`maxActiveSubscriptions`, `maxActiveSubscriptionsPerUser`)
+  are checked once for the entire batch.
+- An empty array returns 400 Bad Request.
+
+Response example:
+
+```
+[
+  {
+    "id": "5ae88ef89a9e5d4a589cf27d",
+    "reaction_url": "http://localhost:4022/test/reaction1",
+    "operation_types": [0, 1],
+    ...
+  },
+  {
+    "id": "5ae88f54397cbf2474ef27e1",
+    "reaction_url": "http://localhost:4022/test/reaction2",
+    "operation_types": [2],
+    ...
+  }
+]
+```
 
 ### Remove subscription
 

@@ -75,6 +75,11 @@ class MongoDBStorageProvider extends StorageProvider {
         return subscription.save()
     }
 
+    saveSubscriptions(subscriptions) {
+        const docs = subscriptions.map(s => s instanceof Subscription ? s : new Subscription(s))
+        return Subscription.insertMany(docs)
+    }
+
     removeAllSubscriptions() {
         return Promise.all([
             Subscription.deleteMany({}),

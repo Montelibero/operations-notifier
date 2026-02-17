@@ -123,9 +123,13 @@ module.exports = function (app) {
             })
     })
 
-    //create new subscription
+    //create new subscription (single object or array for batch)
     app.post('/api/subscription', auth.userRequiredMiddleware, (req, res) => {
-        processResponse(observer.subscribe(req.body, req.user), res)
+        if (Array.isArray(req.body)) {
+            processResponse(observer.subscribeBatch(req.body, req.user), res)
+        } else {
+            processResponse(observer.subscribe(req.body, req.user), res)
+        }
     })
 
     //unsubscribe

@@ -18,7 +18,7 @@ module.exports = function (config) {
             const logger = require('morgan')
             app.use(logger('dev'))
         }
-        app.use(bodyParser.json())
+        app.use(bodyParser.json({limit: '2mb'}))
         app.use(bodyParser.urlencoded({ extended: false }))
         //allow CORS requests
         app.use(cors())

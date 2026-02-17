@@ -14,8 +14,8 @@ RUN npm install
 COPY . .
 
 # Metadata for the container image
-ENV SERVICE_VERSION=0.6.1
-LABEL org.opencontainers.image.version="0.6.1"
+ENV SERVICE_VERSION=0.7.0
+LABEL org.opencontainers.image.version="0.7.0"
 
 # Expose the API port
 EXPOSE 4021

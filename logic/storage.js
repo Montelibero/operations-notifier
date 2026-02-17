@@ -145,15 +145,26 @@ class Storage {
      * @returns {Promise<Subscription>}
      */
     createSubscription(subscriptionParams, user) {
-        if (!subscriptionParams)
-            return Promise.reject(errors.badRequest('Subscription params were not provided.'))
+        const result = this._validateSubscriptionParams(subscriptionParams, user)
+        if (result.error) return Promise.reject(result.error)
+        return this.provider.saveSubscription(result.subscription)
+    }
 
-        if (!subscriptionParams.reaction_url) {
-            return Promise.reject(errors.validationError('reaction_url', 'Reaction URL is required.'))
-        }
-        if (!/^(?:http(s)?:\/\/)[\w\-\._~:/?#[\]@!\$&'\(\)\*\+,;=.]+$/.test(subscriptionParams.reaction_url)) {
-            return Promise.reject(errors.validationError('reaction_url', 'Reaction URL is required.'))
-        }
+    /**
+     * Validate and build a subscription object from request params.
+     * @param {Object} subscriptionParams
+     * @param {User} user
+     * @returns {{error: Object}|{subscription: Object}} - error or valid subscription
+     */
+    _validateSubscriptionParams(subscriptionParams, user) {
+        if (!subscriptionParams)
+            return {error: errors.badRequest('Subscription params were not provided.')}
+
+        if (!subscriptionParams.reaction_url)
+            return {error: errors.validationError('reaction_url', 'Reaction URL is required.')}
+
+        if (!/^(?:http(s)?:\/\/)[\w\-\._~:/?#[\]@!\$&'\(\)\*\+,;=.]+$/.test(subscriptionParams.reaction_url))
+            return {error: errors.validationError('reaction_url', 'Reaction URL is required.')}
 
         let subscription = {
                 pubkey: user ? user.pubkey : null,
@@ -164,16 +175,14 @@ class Storage {
 
         if (subscriptionParams.account) {
             if (!StrKey.isValidEd25519PublicKey(subscriptionParams.account))
-                return Promise.reject(errors.validationError('account', 'Invalid Stellar account address.'))
-
+                return {error: errors.validationError('account', 'Invalid Stellar account address.')}
             subscription.account = subscriptionParams.account
             isValid = true
         }
 
         if (subscriptionParams.memo) {
             if (typeof subscriptionParams.memo === 'string' && subscriptionParams.memo.length > 64)
-                return Promise.reject(errors.validationError('memo', 'Invalid memo format. String is too long.'))
-
+                return {error: errors.validationError('memo', 'Invalid memo format. String is too long.')}
             subscription.memo = '' + subscriptionParams.memo
             isValid = true
         }
@@ -187,8 +196,7 @@ class Storage {
                 optypes = optypes.map(v => parseInt(v))
                 const validOpTypes = new Set(Object.values(xdr.OperationType._members).map(m => m.value))
                 if (optypes.some(v => isNaN(v) || !validOpTypes.has(v)))
-                    return Promise.reject(errors.validationError('operation_types', `Invalid operation type specified. Parameter operation_types should be an array of integers matching existing operation types (valid values: ${[...validOpTypes].sort((a, b) => a - b).join(', ')}).`))
-
+                    return {error: errors.validationError('operation_types', `Invalid operation type specified. Parameter operation_types should be an array of integers matching existing operation types (valid values: ${[...validOpTypes].sort((a, b) => a - b).join(', ')}).`)}
                 subscription.operation_types = optypes
                 isValid = true
             }
@@ -197,13 +205,12 @@ class Storage {
         if (subscriptionParams.asset_code) {
             let assetProps = parseAsset(subscriptionParams)
             if (!assetProps)
-                return Promise.reject(errors.validationError('asset', 'Invalid asset format. Check https://www.stellar.org/developers/guides/concepts/assets.html#anchors-issuing-assets.'))
-
+                return {error: errors.validationError('asset', 'Invalid asset format. Check https://www.stellar.org/developers/guides/concepts/assets.html#anchors-issuing-assets.')}
             Object.assign(subscription, assetProps)
             isValid = true
         }
 
-        if (!isValid) return Promise.reject(errors.badRequest('No operation filter params were provided.'))
+        if (!isValid) return {error: errors.badRequest('No operation filter params were provided.')}
 
         if (subscriptionParams.expires) {
             let rawDate = subscriptionParams.expires
@@ -212,14 +219,29 @@ class Storage {
             }
             let expirationDate = new Date(rawDate)
             if (isNaN(expirationDate.getTime()))
-                return Promise.reject(errors.validationError('expires', 'Invalid expiration date format.'))
+                return {error: errors.validationError('expires', 'Invalid expiration date format.')}
             if (expirationDate < new Date())
-                return Promise.reject(errors.validationError('expires', 'Expiration date cannot be less than current date.'))
-
+                return {error: errors.validationError('expires', 'Expiration date cannot be less than current date.')}
             subscription.expires = expirationDate
         }
 
-        return this.provider.saveSubscription(subscription)
+        return {subscription}
+    }
+
+    /**
+     * Create multiple subscriptions from request params (batch).
+     * @param {Object[]} paramsArray - array of subscription filter params
+     * @param {User} user - subscription owner
+     * @returns {Promise<Object[]>}
+     */
+    createSubscriptions(paramsArray, user) {
+        const subscriptions = []
+        for (const params of paramsArray) {
+            const result = this._validateSubscriptionParams(params, user)
+            if (result.error) return Promise.reject(result.error)
+            subscriptions.push(result.subscription)
+        }
+        return this.provider.saveSubscriptions(subscriptions)
     }
 
     static registerStorageProvider(providerName, provider) {

@@ -65,6 +65,15 @@ class StorageProvider {
     }
 
     /**
+     * Persist multiple subscriptions to the database
+     * @param {Object[]} subscriptions
+     * @returns {Promise<Object[]>}
+     */
+    saveSubscriptions(subscriptions) {
+        notImplemented()
+    }
+
+    /**
      * @returns {UserProvider}
      */
     get userProvider() {

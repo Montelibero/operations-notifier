@@ -1,3 +1,11 @@
+0.7.0 / 2026-02-17
+==================
+
+* Add bulk subscription creation — POST /api/subscription accepts an array.
+* Batch insert via single DB operation (insertMany for MongoDB).
+* Hash-based O(1) deduplication for subscriptions.
+* Increase request body limit to 2MB (~10000 subscriptions per request).
+
 0.6.1 / 2026-01-27
 ==================
 
