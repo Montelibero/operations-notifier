@@ -265,6 +265,9 @@ class Notifier {
         if (subscription.status === 1) return
         subscription.status = 1
         if (this.observer && this.observer.subscriptions) {
+            if (this.observer.subscriptionIndex) {
+                this.observer.subscriptionIndex.remove(subscription)
+            }
             const index = this.observer.subscriptions.findIndex(s => s.id == subscription.id)
             if (index >= 0) this.observer.subscriptions.splice(index, 1)
         }

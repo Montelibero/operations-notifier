@@ -2,6 +2,7 @@ const { isValidAsset, parseAsset } = require('../util/asset-helper')
 const { elapsed } = require('../util/elapsed-time')
 const { verifySignature, signer } = require('../util/signer')
 const { matches } = require('../util/subscription-match-helper')
+const SubscriptionIndex = require('../util/subscription-index')
 
 describe('assetHelper.isValidAsset', function () {
     it('signs the data', function () {
@@ -361,5 +362,191 @@ describe('subscriptionMatchHelper.matches', function () {
             }
             expect(matches(subscription, operation)).to.be.false
         })
+    })
+})
+
+describe('SubscriptionIndex', function () {
+    const ACCOUNT_A = 'GTEST1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ12345678901234'
+    const ACCOUNT_B = 'GAKKEOZP54PTYUX2UV3DC6NSFVKFXIINXUUGDLDKFFLSQC6QHIKY74IC'
+    const ACCOUNT_C = 'GCEZWKCA5VLDNRLN3RPRJMRZOX3Z6G5CHCGSNFHEBD9AFZQ7TM4JRS9A'
+    const ISSUER = 'GAG36IX3EZ34PG4TYY5OJIIDACHXOFVQ6IZUWLMJNKJYY2B7DYZJWEJV'
+
+    it('indexes subscriptions by account', function () {
+        const index = new SubscriptionIndex()
+        const sub = { id: '1', account: ACCOUNT_A }
+        index.add(sub)
+
+        const operation = { account: ACCOUNT_A, type_i: 1 }
+        const result = index.findMatches(operation)
+        expect(result).to.have.lengthOf(1)
+        expect(result[0]).to.equal(sub)
+    })
+
+    it('matches by destination', function () {
+        const index = new SubscriptionIndex()
+        const sub = { id: '1', account: ACCOUNT_A }
+        index.add(sub)
+
+        const operation = { account: 'GOTHER', destination: ACCOUNT_A, type_i: 1 }
+        const result = index.findMatches(operation)
+        expect(result).to.have.lengthOf(1)
+        expect(result[0]).to.equal(sub)
+    })
+
+    it('matches by trades seller_id', function () {
+        const index = new SubscriptionIndex()
+        const sub = { id: '1', account: ACCOUNT_B }
+        index.add(sub)
+
+        const operation = {
+            account: 'GSOURCE',
+            destination: 'GDEST',
+            type_i: 13,
+            trades: [{ seller_id: ACCOUNT_B }]
+        }
+        const result = index.findMatches(operation)
+        expect(result).to.have.lengthOf(1)
+    })
+
+    it('matches by manage_data value', function () {
+        const index = new SubscriptionIndex()
+        const sub = { id: '1', account: ACCOUNT_A }
+        index.add(sub)
+
+        const operation = { account: 'GOTHER', type_i: 10, value: ACCOUNT_A }
+        const result = index.findMatches(operation)
+        expect(result).to.have.lengthOf(1)
+    })
+
+    it('matches by manage_data value (Buffer)', function () {
+        const index = new SubscriptionIndex()
+        const sub = { id: '1', account: ACCOUNT_A }
+        index.add(sub)
+
+        const operation = { account: 'GOTHER', type_i: 10, value: Buffer.from(ACCOUNT_A, 'utf8') }
+        const result = index.findMatches(operation)
+        expect(result).to.have.lengthOf(1)
+    })
+
+    it('always includes catch-all subscriptions (no account filter)', function () {
+        const index = new SubscriptionIndex()
+        const catchAllSub = { id: '1' }
+        const accountSub = { id: '2', account: ACCOUNT_A }
+        index.add(catchAllSub)
+        index.add(accountSub)
+
+        // Operation for ACCOUNT_A should match both
+        const op1 = { account: ACCOUNT_A, type_i: 1 }
+        expect(index.findMatches(op1)).to.have.lengthOf(2)
+
+        // Operation for unrelated account should match only catch-all
+        const op2 = { account: 'GUNRELATED', type_i: 1 }
+        expect(index.findMatches(op2)).to.have.lengthOf(1)
+        expect(index.findMatches(op2)[0]).to.equal(catchAllSub)
+    })
+
+    it('does not return unrelated subscriptions', function () {
+        const index = new SubscriptionIndex()
+        index.add({ id: '1', account: ACCOUNT_A })
+        index.add({ id: '2', account: ACCOUNT_B })
+
+        const operation = { account: ACCOUNT_A, type_i: 1 }
+        const result = index.findMatches(operation)
+        expect(result).to.have.lengthOf(1)
+        expect(result[0].account).to.equal(ACCOUNT_A)
+    })
+
+    it('remove() keeps index in sync', function () {
+        const index = new SubscriptionIndex()
+        const sub = { id: '1', account: ACCOUNT_A }
+        index.add(sub)
+        expect(index.findMatches({ account: ACCOUNT_A, type_i: 1 })).to.have.lengthOf(1)
+
+        index.remove(sub)
+        expect(index.findMatches({ account: ACCOUNT_A, type_i: 1 })).to.have.lengthOf(0)
+    })
+
+    it('remove() cleans up empty Map entries', function () {
+        const index = new SubscriptionIndex()
+        const sub = { id: '1', account: ACCOUNT_A }
+        index.add(sub)
+        expect(index.accountIndex.has(ACCOUNT_A)).to.be.true
+
+        index.remove(sub)
+        expect(index.accountIndex.has(ACCOUNT_A)).to.be.false
+    })
+
+    it('remove() works for catch-all subscriptions', function () {
+        const index = new SubscriptionIndex()
+        const sub = { id: '1' }
+        index.add(sub)
+        expect(index.catchAll.size).to.equal(1)
+
+        index.remove(sub)
+        expect(index.catchAll.size).to.equal(0)
+    })
+
+    it('buildFrom() replaces previous index', function () {
+        const index = new SubscriptionIndex()
+        index.add({ id: 'old', account: ACCOUNT_A })
+
+        index.buildFrom([
+            { id: 'new1', account: ACCOUNT_B },
+            { id: 'new2' }
+        ])
+
+        expect(index.findMatches({ account: ACCOUNT_A, type_i: 1 })).to.have.lengthOf(1) // only catch-all
+        expect(index.findMatches({ account: ACCOUNT_B, type_i: 1 })).to.have.lengthOf(2) // account + catch-all
+    })
+
+    it('caches _cachedAsset on subscriptions with asset_type', function () {
+        const index = new SubscriptionIndex()
+        const sub = {
+            id: '1',
+            account: ACCOUNT_A,
+            asset_type: 1,
+            asset_code: 'USD',
+            asset_issuer: ISSUER
+        }
+        expect(sub._cachedAsset).to.be.undefined
+
+        index.add(sub)
+        expect(sub._cachedAsset).to.not.be.undefined
+        expect(sub._cachedAsset.asset_code).to.equal('USD')
+        expect(sub._cachedAsset.asset_type).to.equal(1)
+    })
+
+    it('does not cache asset for subscriptions without asset_type', function () {
+        const index = new SubscriptionIndex()
+        const sub = { id: '1', account: ACCOUNT_A }
+        index.add(sub)
+        expect(sub._cachedAsset).to.be.undefined
+    })
+
+    it('does not duplicate subscriptions when operation matches via multiple paths', function () {
+        const index = new SubscriptionIndex()
+        const sub = { id: '1', account: ACCOUNT_A }
+        index.add(sub)
+
+        // Operation where account AND destination both equal ACCOUNT_A
+        const operation = { account: ACCOUNT_A, destination: ACCOUNT_A, type_i: 1 }
+        const result = index.findMatches(operation)
+        expect(result).to.have.lengthOf(1)
+    })
+
+    it('handles many subscriptions efficiently', function () {
+        const index = new SubscriptionIndex()
+        // Add 1000 subscriptions with unique accounts
+        for (let i = 0; i < 1000; i++) {
+            index.add({ id: String(i), account: `GACCOUNT${String(i).padStart(48, '0')}` })
+        }
+        // Add the target subscription
+        const target = { id: 'target', account: ACCOUNT_A }
+        index.add(target)
+
+        const operation = { account: ACCOUNT_A, type_i: 1 }
+        const result = index.findMatches(operation)
+        expect(result).to.have.lengthOf(1)
+        expect(result[0]).to.equal(target)
     })
 })

@@ -1,6 +1,7 @@
 const errors = require('../util/errors'),
     TransactionWatcher = require('./transaction-watcher'),
     Notifier = require('./notifier'),
+    SubscriptionIndex = require('../util/subscription-index'),
     storage = require('./storage'),
     config = require('../models/config'),
     logger = require('../util/logger')
@@ -12,6 +13,7 @@ class Observer {
     constructor() {
         this.notifier = new Notifier(this)
         this.transactionWatcher = new TransactionWatcher(this)
+        this.subscriptionIndex = new SubscriptionIndex()
         this.observing = false
     }
 
@@ -24,6 +26,7 @@ class Observer {
         this.__loadingSubscriptionPromise = storage.fetchSubscriptions()
             .then(fetched => {
                 this.subscriptions = fetched || []
+                this.subscriptionIndex.buildFrom(this.subscriptions)
                 this.__loadingSubscriptionPromise = undefined
                 if (this.transactionWatcher && typeof this.transactionWatcher.processQueue === 'function') {
                     this.transactionWatcher.processQueue()
@@ -57,6 +60,7 @@ class Observer {
             })
             .then(newSubscription => {
                 this.subscriptions.push(newSubscription)
+                this.subscriptionIndex.add(newSubscription)
                 logger.info(`Subscription created: id=${newSubscription.id} pubkey=${newSubscription.pubkey || 'anonymous'}`)
                 return newSubscription
             })
@@ -70,6 +74,7 @@ class Observer {
                     //match subscription by id
                     if (s.id == subscriptionId) { //intended non-strict comparision
                         s.status = 1
+                        this.subscriptionIndex.remove(s)
                         this.subscriptions.splice(i, 1)
                         logger.info(`Subscription removed: id=${s.id} pubkey=${s.pubkey || 'anonymous'}`)
                         if (typeof s.save === 'function') return s.save()

@@ -1,7 +1,6 @@
 const config = require('../models/config'),
     {horizon} = require('./stellar-connector'),
     {parseTransaction} = require('./stream-processor'),
-    {matches} = require('../util/subscription-match-helper'),
     storage = require('./storage'),
     logger = require('../util/logger')
 
@@ -203,18 +202,15 @@ class TransactionWatcher {
                     payload: operation,
                     subscriptions: []
                 }
-                // Iterate through subscriptions
-                for (const subscription of this.observer.subscriptions) {
-                    // TODO: ignore subscriptions that were added AFTER the tx ledger close date to prevent false notifications on fast-forwarding
-                    // Find subscriptions that match an operation
-                    if (matches(subscription, operation)) {
-                        // Associate a subscription with current notification
-                        notification.subscriptions.push(subscription.id)
-                        // Will use it once notifications are persisted
-                        relevantSubscriptions.add(subscription)
-                        // Mark subscription as ready to be processed
-                        subscription.processed = false
-                    }
+                // Use index for O(1) candidate lookup instead of O(N) linear scan
+                const matchedSubscriptions = this.observer.subscriptionIndex.findMatches(operation)
+                for (const subscription of matchedSubscriptions) {
+                    // Associate a subscription with current notification
+                    notification.subscriptions.push(subscription.id)
+                    // Will use it once notifications are persisted
+                    relevantSubscriptions.add(subscription)
+                    // Mark subscription as ready to be processed
+                    subscription.processed = false
                 }
 
                 // Process a notification if at least one match was found

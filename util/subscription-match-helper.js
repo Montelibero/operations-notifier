@@ -27,7 +27,7 @@ function matches(subscription, operation) {
         }
     }
     if (subscription.asset_type) {
-        const assetToFilter = parseAsset(subscription)
+        const assetToFilter = subscription._cachedAsset || parseAsset(subscription)
         return assetsEqual(assetToFilter, operation.asset) || assetsEqual(assetToFilter, operation.source_asset)
     }
     return true
