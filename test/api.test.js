@@ -93,6 +93,51 @@ describe('API', function () {
                 })
                 expect(res.status).to.equal(200)
             })
+
+            it('it should return existing subscription on duplicate POST (idempotent)', async () => {
+                const data = {
+                    reaction_url: 'http://fake.url/dedup-test',
+                    operation_types: [0, 2]
+                }
+
+                const res1 = await axiosInstance.post('/api/subscription', data, {
+                    headers: {
+                        authorization: config.adminAuthenticationToken
+                    }
+                })
+                expect(res1.status).to.equal(200)
+
+                const res2 = await axiosInstance.post('/api/subscription', data, {
+                    headers: {
+                        authorization: config.adminAuthenticationToken
+                    }
+                })
+                expect(res2.status).to.equal(200)
+                expect(res2.data.id).to.equal(res1.data.id)
+            })
+
+            it('it should create new subscription when reaction_url differs', async () => {
+                const data1 = {
+                    reaction_url: 'http://fake.url/unique-a',
+                    operation_types: [0]
+                }
+                const data2 = {
+                    reaction_url: 'http://fake.url/unique-b',
+                    operation_types: [0]
+                }
+
+                const res1 = await axiosInstance.post('/api/subscription', data1, {
+                    headers: {
+                        authorization: config.adminAuthenticationToken
+                    }
+                })
+                const res2 = await axiosInstance.post('/api/subscription', data2, {
+                    headers: {
+                        authorization: config.adminAuthenticationToken
+                    }
+                })
+                expect(res1.data.id).to.not.equal(res2.data.id)
+            })
         })
 
         describe('/GET subscriptions', () => {
@@ -104,7 +149,7 @@ describe('API', function () {
                 })
                 expect(res.status).to.equal(200)
                 expect(res.data).to.be.an('array')
-                expect(res.data.length).to.be.eql(2)
+                expect(res.data.length).to.be.eql(5)
                 subscriptions = res.data
             })
 

@@ -6,6 +6,18 @@ const errors = require('../util/errors'),
     config = require('../models/config'),
     logger = require('../util/logger')
 
+function arraysEqual(a, b) {
+    if (a === b) return true
+    if (!a && !b) return true
+    if (!a || !b) return false
+    if (a.length !== b.length) return false
+    const sortedA = [...a].sort()
+    const sortedB = [...b].sort()
+    return sortedA.every((v, i) => v === sortedB[i])
+}
+
+const DEDUP_FIELDS = ['pubkey', 'reaction_url', 'account', 'memo', 'asset_type', 'asset_code', 'asset_issuer']
+
 /**
  *
  */
@@ -45,8 +57,6 @@ class Observer {
     }
 
     subscribe(subscriptionParams, user) {
-        //TODO: prevent duplicate subscriptions by checking subscription hash (fields "account", "asset_type" etc.)
-        //https://www.npmjs.com/package/farmhash
         return this.loadSubscriptions()
             .then(() => {
                 if (this.getActiveSubscriptionsCount() >= config.maxActiveSubscriptions) {
@@ -56,13 +66,22 @@ class Observer {
                 if (config.authorization && maxPerUser && this.getUserActiveSubscriptionsCount(user) >= maxPerUser) {
                     return Promise.reject(errors.forbidden('Max active subscriptions exceeded.'))
                 }
+                const existing = this.subscriptions.find(s => {
+                    for (const field of DEDUP_FIELDS) {
+                        if ((s[field] || '') !== (subscriptionParams[field] || '')) return false
+                    }
+                    return arraysEqual(s.operation_types, subscriptionParams.operation_types)
+                })
+                if (existing) return existing
                 return storage.createSubscription(subscriptionParams, user)
             })
-            .then(newSubscription => {
-                this.subscriptions.push(newSubscription)
-                this.subscriptionIndex.add(newSubscription)
-                logger.info(`Subscription created: id=${newSubscription.id} pubkey=${newSubscription.pubkey || 'anonymous'}`)
-                return newSubscription
+            .then(subscription => {
+                if (!this.subscriptions.includes(subscription)) {
+                    this.subscriptions.push(subscription)
+                    this.subscriptionIndex.add(subscription)
+                    logger.info(`Subscription created: id=${subscription.id} pubkey=${subscription.pubkey || 'anonymous'}`)
+                }
+                return subscription
             })
     }
 
