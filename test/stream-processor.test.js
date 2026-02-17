@@ -237,19 +237,19 @@ describe('stream-processor', function () {
 
         it('should return empty object for invalid XDR', function () {
             const result = parseManageOfferResult('invalid_xdr', 0);
-            expect(result).to.deep.equal({});
+            expect(result).to.deep.equal({trades: []});
         });
 
         it('should return empty object for non-manage-offer operations', function () {
             // This is a result_xdr from a simple payment operation
             const paymentResultXdr = 'AAAAAAAAAGQAAAAAAAAAAQAAAAAAAAABAAAAAAAAAAA=';
             const result = parseManageOfferResult(paymentResultXdr, 0);
-            expect(result).to.deep.equal({});
+            expect(result).to.deep.equal({trades: []});
         });
 
         it('should return empty object when operation index is out of bounds', function () {
             const result = parseManageOfferResult(manageOfferResultXdr, 99);
-            expect(result).to.deep.equal({});
+            expect(result).to.deep.equal({trades: []});
         });
 
         it('should parse created_offer_id from manage_sell_offer result', function () {
@@ -263,7 +263,7 @@ describe('stream-processor', function () {
             // Transaction where offer was fully filled immediately
             const deletedOfferResultXdr = 'AAAAAAAAAGQAAAAAAAAAAQAAAAAAAAADAAAAAAAAAAEAAAAAnXeycMNiUYDu6oVpIipu7XFYIo6Zap7mR+V0DI6dZhoAAAAAYyzggwAAAAFZRVNCVQAAAAAAAAAAAAAABKm3owZNa8bB1ZbPOeEZwMn6SWmWnL4MJkNI8TQwb6oAAAAADWSwQAAAAAF4WExNAAAAACI213D+DT4BUhl11c96xIQrcJXWsanXaNPppjLpmQa+AAABJWv0gDQAAAAAAAAAAAAAAAA=';
             const result = parseManageOfferResult(deletedOfferResultXdr, 0);
-            expect(result).to.deep.equal({});
+            expect(result).to.deep.equal({trades: []});
         });
     });
 });
