@@ -1,6 +1,7 @@
 const express = require('express'),
     config = require('../models/config'),
     path = require('path'),
+    { maskTokenPreview } = require('../util/log-redaction'),
     errors = require('../util/errors'),
     auth = require('./authorization-handler'),
     logger = require('../util/logger')
@@ -19,7 +20,7 @@ module.exports = function (app) {
     // Log admin UI access information
     logger.info('✨ Admin UI is available at:')
     logger.info(`🔗 http://${host}:${port}/admin`)
-    logger.info(`🔑 Use admin token for access: ${config.adminAuthenticationToken ? config.adminAuthenticationToken.substring(0, 8) + '...' : 'not set'}`)
+    logger.info(`🔑 Admin token: ${maskTokenPreview(config.adminAuthenticationToken)}`)
     logger.info('📖 Documentation: https://github.com/Montelibero/operations-notifier')
 
     // Admin UI access route without authentication (auth will happen client-side)

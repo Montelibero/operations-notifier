@@ -78,4 +78,22 @@ describe('TransactionWatcher', function () {
         expect(health.healthy).to.equal(false)
         expect(health.reason).to.equal('watcher_stalled')
     })
+
+    it('stays healthy during catch-up when progress is recent', function () {
+        config.healthStartupGraceSeconds = 0
+        config.healthMaxNoSuccessSeconds = 10
+        config.healthMaxNoLedgerSeconds = 10
+        config.healthMaxNoProgressSeconds = 10
+
+        watcher.state = 'catching_up'
+        watcher.startedAt = new Date(Date.now() - 60000)
+        watcher.lastSuccessfulFetchAt = new Date(Date.now() - 5000)
+        watcher.lastLedgerSeenAt = new Date(Date.now() - 60000)
+        watcher.lastLedgerProcessedAt = new Date(Date.now() - 5000)
+
+        const health = watcher.getHealth()
+
+        expect(health.healthy).to.equal(true)
+        expect(health.reason).to.equal('ok')
+    })
 })

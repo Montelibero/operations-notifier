@@ -3,6 +3,7 @@ const { elapsed } = require('../util/elapsed-time')
 const { verifySignature, signer } = require('../util/signer')
 const { matches } = require('../util/subscription-match-helper')
 const SubscriptionIndex = require('../util/subscription-index')
+const { maskTokenPreview, sanitizeUrlForLogs } = require('../util/log-redaction')
 
 describe('assetHelper.isValidAsset', function () {
     it('signs the data', function () {
@@ -189,6 +190,18 @@ describe('signer.sign', function () {
             signature = signer.sign(data, 'utf8', 'base64')
         expect(signature.length).to.equal(88)
         expect(verifySignature(signer.getPublicKey(), data, signature, 'utf8', 'base64')).to.be.true
+    })
+})
+
+describe('logRedaction', function () {
+    it('masks sensitive horizon url parts in logs', function () {
+        const url = 'https://mainnet.stellar.validationcloud.io/v1/zLR8If1YxHyKtdE1EvW1EBczkjZ6Y8TVcLzBtdVeTYQ?apiKey=secret'
+        expect(sanitizeUrlForLogs(url)).to.equal('https://mainnet.stellar.validationcloud.io/v1/***?apiKey=***')
+    })
+
+    it('does not expose admin token preview in logs', function () {
+        expect(maskTokenPreview('98c12910bf35c79a800e9ea893a93b078ea92fc7a26ca76c0cd2f6003464d781')).to.equal('configured')
+        expect(maskTokenPreview('')).to.equal('not set')
     })
 })
 

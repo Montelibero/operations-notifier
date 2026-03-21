@@ -708,11 +708,13 @@ class TransactionWatcher {
             }
         }
 
+        const isCatchingUp = this.state === 'catching_up'
+        const isActive = isCatchingUp || this.streaming || !!this.releaseStream || !!this.recoveryTimer
         const successStalled = sinceSuccess !== null && sinceSuccess > maxNoSuccessSeconds
-        const ledgerStalled = sinceLedgerSeen !== null && sinceLedgerSeen > maxNoLedgerSeconds
+        const ledgerStalled = !isCatchingUp && sinceLedgerSeen !== null && sinceLedgerSeen > maxNoLedgerSeconds
         const progressStalled = sinceProgress !== null && sinceProgress > maxNoProgressSeconds
         const noRecentSignals = successStalled || ledgerStalled || progressStalled
-        const noActiveRecovery = !this.recoveryTimer && !this.streaming && !this.releaseStream
+        const noActiveRecovery = !isActive
 
         return {
             healthy: !noRecentSignals && !noActiveRecovery,

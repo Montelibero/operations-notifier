@@ -41,6 +41,7 @@ services:
       HEALTH_MAX_NO_LEDGER_SECONDS: "180"
       HEALTH_MAX_NO_PROGRESS_SECONDS: "180"
       HEALTH_STARTUP_GRACE_SECONDS: "120"
+      # RESET_CURSOR: "true" # ignore saved cursor on startup and skip backlog once
 
       # Limits & concurrency
       MAX_ACTIVE_SUBSCRIPTIONS: "10000"
