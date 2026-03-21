@@ -20,5 +20,9 @@
   "adminAuthenticationToken": "98c12910bf35c79a800e9ea893a93b078ea92fc7a26ca76c0cd2f6003464d781",
   "adminUiEnabled": true,
   "logLevel": "INFO",
+  "healthMaxNoSuccessSeconds": 120,
+  "healthMaxNoLedgerSeconds": 180,
+  "healthMaxNoProgressSeconds": 180,
+  "healthStartupGraceSeconds": 120,
   "resetCursor": false
 }

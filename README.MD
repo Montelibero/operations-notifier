@@ -78,6 +78,10 @@ docker build -t stellar_notifier:latest .
 docker compose up -d
 ```
 
+The bundled `docker-compose.yml` includes a container healthcheck against
+`GET /health`. If ingestion stalls while the HTTP process is still alive, the
+container becomes `unhealthy`, so an external watchdog can restart it.
+
 ## Installation
 
 1\. Clone the repository.
@@ -208,6 +212,26 @@ live stream (current ledger). The cursor continues to be saved normally.
 Useful for skipping large backlogs after extended downtime.\
 Default value: `false`.\
 Env parameter: `RESET_CURSOR`
+- **healthMaxNoSuccessSeconds**\
+Maximum allowed time without a successful Horizon fetch before `/health`
+reports the service as unhealthy.\
+Default value: `120`.\
+Env parameter: `HEALTH_MAX_NO_SUCCESS_SECONDS`
+- **healthMaxNoLedgerSeconds**\
+Maximum allowed time without seeing a new ledger before `/health`
+reports the service as unhealthy.\
+Default value: `180`.\
+Env parameter: `HEALTH_MAX_NO_LEDGER_SECONDS`
+- **healthMaxNoProgressSeconds**\
+Maximum allowed time without processing ledger progress before `/health`
+reports the service as unhealthy.\
+Default value: `180`.\
+Env parameter: `HEALTH_MAX_NO_PROGRESS_SECONDS`
+- **healthStartupGraceSeconds**\
+Startup grace period before strict health checks are enforced. Useful to avoid
+false negatives during initial catch-up.\
+Default value: `120`.\
+Env parameter: `HEALTH_STARTUP_GRACE_SECONDS`
 
 - **logLevel**\
 Log verbosity level (DEBUG, INFO, WARN, ERROR).\
@@ -247,6 +271,10 @@ Other storage providers can be easily connected through the standard interface.
   "maxNotificationAgeSeconds": 604800,
   "maxConsecutiveLostNotifications": 10,
   "reactionResponseTimeout": 20,
+  "healthMaxNoSuccessSeconds": 120,
+  "healthMaxNoLedgerSeconds": 180,
+  "healthMaxNoProgressSeconds": 180,
+  "healthStartupGraceSeconds": 120,
   "userTokens": [],
   "adminAuthenticationToken": "98c12910bf35c79a800e9ea893a93b078ea92fc7a26ca76c0cd2f6003464d781"
 }
@@ -302,11 +330,24 @@ Admin requests can use `Authorization: <ADMIN_AUTHENTICATION_TOKEN>` in any mode
   - `stream` — stream status (last ledger, last tx hash/paging token, queue length, reconnect delay).
   - `notifier` — notifier status (in-flight notifications).
 
+### Healthcheck
+
+- `GET /health` — strict liveness/readiness endpoint for container orchestration
+  and external watchdogs.
+- Returns `200` with `{"status":"ok"}` when the API is up and transaction
+  ingestion is making progress.
+- Returns `503` with `{"status":"unhealthy","reason":"watcher_stalled"}` when
+  the watcher is no longer ingesting data, even if the HTTP process itself is
+  still running.
+- Health evaluation uses `healthMaxNoSuccessSeconds`,
+  `healthMaxNoLedgerSeconds`, `healthMaxNoProgressSeconds`, and
+  `healthStartupGraceSeconds`.
+
 #### Status response schema
 
 ```
 {
-  "version": "0.7.0",
+  "version": "0.8.0",
   "uptime": "3h 10m 42s",
   "publicKey": "G...SIGNER...",
   "observing": true,

@@ -45,6 +45,25 @@ function getUserPubKey(req) {
 }
 
 module.exports = function (app) {
+    app.get('/health', (req, res) => {
+        const watcherHealth = observer.transactionWatcher && observer.transactionWatcher.getHealth
+            ? observer.transactionWatcher.getHealth()
+            : {healthy: false, reason: 'watcher_unavailable'}
+
+        if (watcherHealth.healthy) {
+            return res.json({
+                status: 'ok',
+                watcher: watcherHealth
+            })
+        }
+
+        return res.status(503).json({
+            status: 'unhealthy',
+            reason: watcherHealth.reason || 'watcher_unhealthy',
+            watcher: watcherHealth
+        })
+    })
+
     //get application status
     app.get('/api/status', (req, res) => {
         Promise.all([
@@ -70,7 +89,15 @@ module.exports = function (app) {
                         ledgerWorkers: streamStatus.ledgerWorkers ?? null,
                         txInProgress: streamStatus.txInProgress ?? 0,
                         txWorkers: streamStatus.txWorkers ?? null,
-                        reconnectDelay: streamStatus.reconnectDelay
+                        reconnectDelay: streamStatus.reconnectDelay,
+                        state: streamStatus.state,
+                        lastLedgerSeenAt: streamStatus.lastLedgerSeenAt,
+                        lastLedgerProcessedAt: streamStatus.lastLedgerProcessedAt,
+                        lastSuccessfulFetchAt: streamStatus.lastSuccessfulFetchAt,
+                        lastRecoveryAttemptAt: streamStatus.lastRecoveryAttemptAt,
+                        lastErrorAt: streamStatus.lastErrorAt,
+                        lastErrorMessage: streamStatus.lastErrorMessage,
+                        healthy: streamStatus.healthy
                     }
                     : null
                 return res.json({

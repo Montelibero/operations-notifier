@@ -1,3 +1,11 @@
+0.8.0 / 2026-03-21
+==================
+
+* Add watcher self-recovery after temporary Horizon failures.
+* Add strict `/health` endpoint for external restart automation.
+* Add Docker Compose container healthcheck based on `/health`.
+* Add watcher health thresholds via config and environment variables.
+
 0.7.0 / 2026-02-17
 ==================
 

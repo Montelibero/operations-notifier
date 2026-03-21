@@ -6,6 +6,7 @@ const storage = require('../logic/storage')
 const { encodeUrlParams } = require('../util/url-encoder')
 const roles = require('../models/user/roles')
 const observer = require('../logic/observer')
+const sinon = require('sinon')
 
 
 describe('API', function () {
@@ -498,6 +499,53 @@ describe('API', function () {
                 headers: { authorization: tokenA }
             })
             expect(res.status).to.equal(200)
+        })
+    })
+
+    describe('Health', () => {
+        let originalHealthConfig
+
+        beforeEach(function () {
+            originalHealthConfig = {
+                healthMaxNoSuccessSeconds: config.healthMaxNoSuccessSeconds,
+                healthMaxNoLedgerSeconds: config.healthMaxNoLedgerSeconds,
+                healthMaxNoProgressSeconds: config.healthMaxNoProgressSeconds,
+                healthStartupGraceSeconds: config.healthStartupGraceSeconds
+            }
+        })
+
+        afterEach(function () {
+            Object.assign(config, originalHealthConfig)
+            sinon.restore()
+        })
+
+        it('it should return 200 from /health when watcher is healthy', async () => {
+            sinon.stub(observer.transactionWatcher, 'getHealth').returns({
+                healthy: true,
+                reason: 'ok',
+                state: 'streaming'
+            })
+
+            const res = await axiosInstance.get('/health')
+
+            expect(res.status).to.equal(200)
+            expect(res.data.status).to.equal('ok')
+        })
+
+        it('it should return 503 from /health when watcher is stalled', async () => {
+            sinon.stub(observer.transactionWatcher, 'getHealth').returns({
+                healthy: false,
+                reason: 'watcher_stalled',
+                state: 'recovering'
+            })
+
+            try {
+                await axiosInstance.get('/health')
+                expect.fail('Expected /health to return 503')
+            } catch (err) {
+                expect(err.response.status).to.equal(503)
+                expect(err.response.data.reason).to.equal('watcher_stalled')
+            }
         })
     })
 })

@@ -7,6 +7,16 @@ services:
     ports:
       - "4021:4021"
     restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4021/health').then(res => process.exit(res.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
     environment:
       # Core config
       AUTHORIZATION: "disabled" # disabled | token | ed25519
@@ -27,6 +37,10 @@ services:
       
       # Logging
       LOG_LEVEL: "INFO" # DEBUG, INFO, WARN, ERROR
+      HEALTH_MAX_NO_SUCCESS_SECONDS: "120"
+      HEALTH_MAX_NO_LEDGER_SECONDS: "180"
+      HEALTH_MAX_NO_PROGRESS_SECONDS: "180"
+      HEALTH_STARTUP_GRACE_SECONDS: "120"
 
       # Limits & concurrency
       MAX_ACTIVE_SUBSCRIPTIONS: "10000"

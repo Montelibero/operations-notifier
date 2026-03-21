@@ -32,6 +32,12 @@ function getHeader(headers, name) {
     return undefined
 }
 
+function getNumericConfigValue(value, fallback) {
+    if (value === undefined || value === null || value === '') return fallback
+    const parsed = parseInt(value)
+    return isNaN(parsed) ? fallback : parsed
+}
+
 function fetchTransactions(cursor, ledgerSequence = undefined, watcher = null) {
     let builder = horizon
         .transactions()
@@ -112,6 +118,66 @@ class TransactionWatcher {
         this.highestProcessedPagingToken = null
         this.lastLagLogAt = 0
         this.streaming = false
+        this.state = 'idle'
+        this.startedAt = new Date()
+        this.lastSuccessfulFetchAt = null
+        this.lastLedgerSeenAt = null
+        this.lastLedgerProcessedAt = null
+        this.lastRecoveryAttemptAt = null
+        this.lastErrorAt = null
+        this.lastErrorMessage = null
+        this.recoveryTimer = null
+    }
+
+    markFetchSuccess() {
+        this.lastSuccessfulFetchAt = new Date()
+        this.lastErrorAt = null
+        this.lastErrorMessage = null
+    }
+
+    markLedgerSeen() {
+        this.lastLedgerSeenAt = new Date()
+    }
+
+    markLedgerProcessed() {
+        this.lastLedgerProcessedAt = new Date()
+        this.markFetchSuccess()
+    }
+
+    getBackoffDelay(defaultDelay = 1000) {
+        if (this.reconnectDelay) {
+            this.reconnectDelay *= 2
+        } else {
+            this.reconnectDelay = defaultDelay
+        }
+        if (this.reconnectDelay > 60000) {
+            this.reconnectDelay = 60000
+        }
+        return this.reconnectDelay
+    }
+
+    scheduleRecovery(reason, delay) {
+        if (!this.observer.observing) return
+        const recoveryDelay = Math.min(Math.max(parseInt(delay) || 1000, 1000), 60000)
+        this.lastErrorAt = new Date()
+        this.lastErrorMessage = reason || 'unknown error'
+        this.lastRecoveryAttemptAt = new Date()
+        this.state = 'recovering'
+        this.stopWatching(true)
+        if (this.recoveryTimer) {
+            clearTimeout(this.recoveryTimer)
+        }
+        logger.warn(`Watcher recovery scheduled (${this.lastErrorMessage}). Restarting in ${recoveryDelay / 1000}s...`)
+        this.recoveryTimer = setTimeout(() => {
+            this.recoveryTimer = null
+            if (!this.observer.observing) return
+            this.watch()
+        }, recoveryDelay)
+    }
+
+    getAgeSeconds(date) {
+        if (!date) return null
+        return Math.floor((Date.now() - new Date(date).getTime()) / 1000)
     }
 
     /**
@@ -296,7 +362,15 @@ class TransactionWatcher {
      * Start watching
      */
     watch() {
+        if (this.recoveryTimer) {
+            clearTimeout(this.recoveryTimer)
+            this.recoveryTimer = null
+        }
         if (this.releaseStream) return
+        this.state = 'starting'
+        if (!this.startedAt) {
+            this.startedAt = new Date()
+        }
 
         // Fetch current ledger for lag calculation during catch-up
         horizon.ledgers().order('desc').limit(1).call()
@@ -347,6 +421,7 @@ class TransactionWatcher {
         }
 
         logger.debug(`trackTransactions with cursor: ${this.cursor.substring(0, 8)}...`)
+        this.state = 'catching_up'
         
         // Используем highestProcessedPagingToken если он доступен и больше текущего курсора
         if (this.highestProcessedPagingToken) {
@@ -371,6 +446,7 @@ class TransactionWatcher {
         
         fetchTransactions(this.cursor, undefined, this)
             .then(({records}) => {
+                this.markFetchSuccess()
                 if (!records || !records.length) {
                     logger.debug('No records found, switching to live stream')
                     this.trackLiveStream()
@@ -435,7 +511,15 @@ class TransactionWatcher {
                     this.trackLiveStream()
                     return
                 }
-                this.stopWatching()
+                const status = err && err.response && err.response.status
+                const isRecoverable = status === 502 || status === 503 || status === 504 ||
+                    (err.message && /service unavailable|timeout|temporar/i.test(err.message))
+                if (isRecoverable) {
+                    const retryDelay = this.getBackoffDelay(1000)
+                    this.scheduleRecovery(err.message || `status ${status}`, retryDelay)
+                    return
+                }
+                this.scheduleRecovery(err.message || 'trackTransactions failed', this.getBackoffDelay(1000))
             })
             
         // Защита от зацикливания - если мы долго в транзакционном режиме
@@ -470,6 +554,7 @@ class TransactionWatcher {
         }
         
         this.streaming = true
+        this.state = 'streaming'
         logger.info('Starting ledger stream...')
         this.releaseStream = horizon
             .ledgers()
@@ -480,6 +565,8 @@ class TransactionWatcher {
                     this.reconnectDelay = undefined
                     this.lastLedger = rawLedger.sequence
                     this.lastLedgerSeen = rawLedger.sequence
+                    this.markFetchSuccess()
+                    this.markLedgerSeen()
                     logger.info(`Ledger received: ${rawLedger.sequence}`)
                     this.enqueueLedger(rawLedger.sequence)
                 },
@@ -487,7 +574,6 @@ class TransactionWatcher {
                     const status = err && (err.status || (err.response && err.response.status))
                     const headers = err && err.response && err.response.headers
                     const reset = getHeader(headers, 'X-RateLimit-Reset')
-                    this.stopWatching()
                     if (status === 429) {
                         const resetValue = parseInt(reset)
                         this.reconnectDelay = (!isNaN(resetValue) && resetValue > 0 ? resetValue : 10) * 1000
@@ -495,18 +581,10 @@ class TransactionWatcher {
                     }
                     else {
                         const detail = status ? `status ${status}` : (err && err.message ? err.message : 'unknown error')
-                        //initiate reconnection sequence with exponential backoff
-                        if (this.reconnectDelay) {
-                            this.reconnectDelay *= 2
-                        } else {
-                            this.reconnectDelay = 1000
-                        }
-                        if (this.reconnectDelay > 60000) {
-                            this.reconnectDelay = 60000
-                        }
+                        this.reconnectDelay = this.getBackoffDelay(1000)
                         logger.warn(`Ledger stream error (${detail}). Reconnecting in ${this.reconnectDelay / 1000}s...`)
                     }
-                    setTimeout(() => this.watch(), this.reconnectDelay)
+                    this.scheduleRecovery(status ? `status ${status}` : (err && err.message ? err.message : 'unknown error'), this.reconnectDelay)
                 }
             })
     }
@@ -527,9 +605,11 @@ class TransactionWatcher {
             const fetchLedgerTxBatch = (cursor) => {
                 fetchTransactions(cursor, sequence)
                     .then(({records}) => {
+                        this.markFetchSuccess()
                         const txCount = records?.length || 0
                         if (!records || !records.length) {
                             this.lastLedgerProcessed = sequence
+                            this.markLedgerProcessed()
                             if (sequence % 10 === 0) {
                                 logger.info(`Ledger ${sequence} processed (0 transactions)`)
                             }
@@ -541,6 +621,7 @@ class TransactionWatcher {
                         this.lastTxPagingToken = lastTx.paging_token
                         this.lastTxHash = lastTx.hash
                         this.lastLedgerProcessed = lastTx.ledger_attr
+                        this.markLedgerProcessed()
                         
                         // Принудительно обновляем курсор при обработке леджера
                         this.highestProcessedPagingToken = lastTx.paging_token
@@ -584,9 +665,64 @@ class TransactionWatcher {
      */
     stopWatching() {
         this.streaming = false
+        this.state = this.observer.observing ? 'stopped' : 'idle'
         if (this.releaseStream) {
             this.releaseStream()
             this.releaseStream = null
+        }
+        if (arguments[0] !== true && this.recoveryTimer) {
+            clearTimeout(this.recoveryTimer)
+            this.recoveryTimer = null
+        }
+    }
+
+    getHealth() {
+        const startupGraceSeconds = getNumericConfigValue(config.healthStartupGraceSeconds, 120)
+        const maxNoSuccessSeconds = getNumericConfigValue(config.healthMaxNoSuccessSeconds, 120)
+        const maxNoLedgerSeconds = getNumericConfigValue(config.healthMaxNoLedgerSeconds, 180)
+        const maxNoProgressSeconds = getNumericConfigValue(config.healthMaxNoProgressSeconds, 180)
+        const uptimeSeconds = this.getAgeSeconds(this.startedAt) || 0
+        const sinceSuccess = this.getAgeSeconds(this.lastSuccessfulFetchAt)
+        const sinceLedgerSeen = this.getAgeSeconds(this.lastLedgerSeenAt)
+        const sinceProgress = this.getAgeSeconds(this.lastLedgerProcessedAt)
+
+        if (!this.observer.observing) {
+            return {
+                healthy: true,
+                reason: 'observer_stopped',
+                state: this.state,
+                secondsSinceSuccessfulFetch: sinceSuccess,
+                secondsSinceLedgerSeen: sinceLedgerSeen,
+                secondsSinceLedgerProcessed: sinceProgress
+            }
+        }
+
+        if (uptimeSeconds < startupGraceSeconds) {
+            return {
+                healthy: true,
+                reason: 'startup_grace',
+                state: this.state,
+                secondsSinceSuccessfulFetch: sinceSuccess,
+                secondsSinceLedgerSeen: sinceLedgerSeen,
+                secondsSinceLedgerProcessed: sinceProgress
+            }
+        }
+
+        const successStalled = sinceSuccess !== null && sinceSuccess > maxNoSuccessSeconds
+        const ledgerStalled = sinceLedgerSeen !== null && sinceLedgerSeen > maxNoLedgerSeconds
+        const progressStalled = sinceProgress !== null && sinceProgress > maxNoProgressSeconds
+        const noRecentSignals = successStalled || ledgerStalled || progressStalled
+        const noActiveRecovery = !this.recoveryTimer && !this.streaming && !this.releaseStream
+
+        return {
+            healthy: !noRecentSignals && !noActiveRecovery,
+            reason: (!noRecentSignals && !noActiveRecovery) ? 'ok' : 'watcher_stalled',
+            state: this.state,
+            lastErrorAt: this.lastErrorAt,
+            lastErrorMessage: this.lastErrorMessage,
+            secondsSinceSuccessfulFetch: sinceSuccess,
+            secondsSinceLedgerSeen: sinceLedgerSeen,
+            secondsSinceLedgerProcessed: sinceProgress
         }
     }
 
@@ -599,9 +735,12 @@ class TransactionWatcher {
             : null
         return {
             streaming: this.streaming && !!this.releaseStream,
+            state: this.state,
             lastLedger: this.lastLedgerSeen ?? this.lastLedger ?? null,
             lastLedgerSeen: this.lastLedgerSeen ?? null,
             lastLedgerProcessed: this.lastLedgerProcessed ?? null,
+            lastLedgerSeenAt: this.lastLedgerSeenAt,
+            lastLedgerProcessedAt: this.lastLedgerProcessedAt,
             ledgerLag,
             lastTxPagingToken: this.lastTxPagingToken,
             lastTxHash: this.lastTxHash,
@@ -611,7 +750,12 @@ class TransactionWatcher {
             ledgerWorkers: this.maxLedgerWorkers,
             txInProgress: this.txInProgress,
             txWorkers: this.maxTxWorkers,
-            reconnectDelay: this.reconnectDelay
+            reconnectDelay: this.reconnectDelay,
+            lastSuccessfulFetchAt: this.lastSuccessfulFetchAt,
+            lastRecoveryAttemptAt: this.lastRecoveryAttemptAt,
+            lastErrorAt: this.lastErrorAt,
+            lastErrorMessage: this.lastErrorMessage,
+            healthy: this.getHealth().healthy
         }
     }
 }
