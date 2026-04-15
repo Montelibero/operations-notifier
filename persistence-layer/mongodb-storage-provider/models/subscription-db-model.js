@@ -9,6 +9,7 @@ const subscriptionSchema = new Schema({
     asset_code: {type: String},
     asset_issuer: {type: String},
     memo: {type: String, index: true},
+    contract: {type: String, index: true},
     operation_types: {type: [Number], index: true},
     reaction_url: {type: String},
     delivery_failures: {type: Number, default: 0},

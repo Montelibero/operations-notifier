@@ -2,15 +2,17 @@ const {parseAsset} = require('./asset-helper')
 const {matches} = require('./subscription-match-helper')
 
 /**
- * Index subscriptions by account for O(1) lookup instead of O(N) linear scan.
+ * Index subscriptions by account and contract for O(1) lookup instead of O(N) linear scan.
  *
  * Structure:
- *   accountIndex: Map<account, Set<subscription>>  — subscriptions filtered by account
- *   catchAll: Set<subscription>                    — subscriptions without account filter (checked for every operation)
+ *   accountIndex:  Map<account,  Set<subscription>>  — subscriptions filtered by account
+ *   contractIndex: Map<contract, Set<subscription>>  — subscriptions filtered by Soroban contract
+ *   catchAll:      Set<subscription>                 — subscriptions without account or contract filter
  */
 class SubscriptionIndex {
     constructor() {
         this.accountIndex = new Map()
+        this.contractIndex = new Map()
         this.catchAll = new Set()
     }
 
@@ -20,6 +22,7 @@ class SubscriptionIndex {
      */
     buildFrom(subscriptions) {
         this.accountIndex = new Map()
+        this.contractIndex = new Map()
         this.catchAll = new Set()
         for (const sub of subscriptions) {
             this.add(sub)
@@ -32,6 +35,7 @@ class SubscriptionIndex {
      */
     add(subscription) {
         this._cacheAsset(subscription)
+        let placed = false
         if (subscription.account) {
             let set = this.accountIndex.get(subscription.account)
             if (!set) {
@@ -39,7 +43,18 @@ class SubscriptionIndex {
                 this.accountIndex.set(subscription.account, set)
             }
             set.add(subscription)
-        } else {
+            placed = true
+        }
+        if (subscription.contract) {
+            let set = this.contractIndex.get(subscription.contract)
+            if (!set) {
+                set = new Set()
+                this.contractIndex.set(subscription.contract, set)
+            }
+            set.add(subscription)
+            placed = true
+        }
+        if (!placed) {
             this.catchAll.add(subscription)
         }
     }
@@ -49,15 +64,24 @@ class SubscriptionIndex {
      * @param {Object} subscription
      */
     remove(subscription) {
+        let removed = false
         if (subscription.account) {
             const set = this.accountIndex.get(subscription.account)
             if (set) {
                 set.delete(subscription)
-                if (set.size === 0) {
-                    this.accountIndex.delete(subscription.account)
-                }
+                if (set.size === 0) this.accountIndex.delete(subscription.account)
             }
-        } else {
+            removed = true
+        }
+        if (subscription.contract) {
+            const set = this.contractIndex.get(subscription.contract)
+            if (set) {
+                set.delete(subscription)
+                if (set.size === 0) this.contractIndex.delete(subscription.contract)
+            }
+            removed = true
+        }
+        if (!removed) {
             this.catchAll.delete(subscription)
         }
     }
@@ -91,6 +115,14 @@ class SubscriptionIndex {
         // Primary: operation.account
         if (operation.account) {
             const set = this.accountIndex.get(operation.account)
+            if (set) {
+                for (const sub of set) candidates.add(sub)
+            }
+        }
+
+        // Soroban contract filter
+        if (operation.contract) {
+            const set = this.contractIndex.get(operation.contract)
             if (set) {
                 for (const sub of set) candidates.add(sub)
             }

@@ -180,6 +180,13 @@ class Storage {
             isValid = true
         }
 
+        if (subscriptionParams.contract) {
+            if (!StrKey.isValidContract(subscriptionParams.contract))
+                return {error: errors.validationError('contract', 'Invalid Soroban contract address.')}
+            subscription.contract = subscriptionParams.contract
+            isValid = true
+        }
+
         if (subscriptionParams.memo) {
             if (typeof subscriptionParams.memo === 'string' && subscriptionParams.memo.length > 64)
                 return {error: errors.validationError('memo', 'Invalid memo format. String is too long.')}

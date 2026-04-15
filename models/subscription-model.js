@@ -36,6 +36,10 @@ class SubscriptionModel extends Model {
      */
     memo
     /**
+     * Soroban contract address to track (C... — matches invoke_host_function operations)
+     */
+    contract
+    /**
      * Operation types to track
      */
     operation_types

@@ -1,6 +1,8 @@
 const config = require('../models/config'),
     {horizon} = require('./stellar-connector'),
     {parseTransaction} = require('./stream-processor'),
+    sorobanRpc = require('./soroban-rpc-client'),
+    {decodeMeta} = require('../util/soroban-helper'),
     storage = require('./storage'),
     logger = require('../util/logger')
 
@@ -285,7 +287,12 @@ class TransactionWatcher {
                 }
             }
 
-            this.observer.notifier.createNotifications(notifications)
+            // Soroban meta enrichment: fetch resultMetaXdr via Soroban RPC only when
+            // at least one invoke_host_function op has a matching subscription, then
+            // decode events and return_value and attach them to the operation payload.
+            const enrichPromise = this._enrichSorobanOps(tx, notifications)
+
+            enrichPromise.then(() => this.observer.notifier.createNotifications(notifications))
                 .then(createdNotifications => {
                     const savedNotifications = createdNotifications || notifications
                     
@@ -321,6 +328,34 @@ class TransactionWatcher {
                     resolve() // Don't reject, continue processing other transactions
                 })
         })
+    }
+
+    /**
+     * For each notification whose payload is an invoke_host_function matching
+     * a subscription, fetch transaction meta via Soroban RPC and attach
+     * decoded events + return_value to the operation payload.
+     *
+     * No-op if Soroban RPC is not configured.
+     * @param {Object} tx - parsed tx returned by parseTransaction()
+     * @param {Array} notifications - notifications to be sent
+     */
+    async _enrichSorobanOps(tx, notifications) {
+        if (!sorobanRpc || !notifications.length) return
+        const sorobanNotifications = notifications.filter(n => n.payload && n.payload.type_i === 24)
+        if (!sorobanNotifications.length) return
+        const txHash = tx.details.hash
+        try {
+            const result = await sorobanRpc.getTransaction(txHash)
+            if (!result || !result.resultMetaXdr) return
+            for (const n of sorobanNotifications) {
+                const opIndex = typeof n.payload.application_order === 'number' ? n.payload.application_order : 0
+                const {events, return_value} = decodeMeta(result.resultMetaXdr, opIndex)
+                n.payload.events = events
+                n.payload.return_value = return_value
+            }
+        } catch (err) {
+            logger.warn(`Soroban meta enrichment failed for tx ${txHash}: ${err.message}`)
+        }
     }
 
     /**

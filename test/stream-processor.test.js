@@ -1,6 +1,6 @@
 const expect = require('chai').expect;
 const sinon = require('sinon');
-const { TransactionBuilder } = require('@stellar/stellar-sdk');
+const { TransactionBuilder, Operation, Keypair, Account, Networks, Address, nativeToScVal } = require('@stellar/stellar-sdk');
 const { parseTransaction, parsePathPaymentTrades, parseManageOfferResult } = require('../logic/stream-processor');
 
 describe('stream-processor', function () {
@@ -132,6 +132,45 @@ describe('stream-processor', function () {
         const tx = createTxMock(operation);
         const parsed = parseTransaction(tx);
         expect(parsed.operations[0].type).to.equal('invoke_host_function');
+    });
+
+    it('should extract contract, function_name and args from a real invokeContract tx', function () {
+        const CONTRACT = 'CAFXUALXFPTBTLSRCDSMJXNPSN3AVL2ZPXJUDDHVTUTLRX5SCNP2SISM';
+        const FROM = 'GBYH3M3REQM3WQOJY26FYORN23EXY22FWBHVZ74TT5GYOF22IIA7YSOX';
+        const src = Keypair.random();
+        const account = new Account(src.publicKey(), '1');
+        const op = Operation.invokeContractFunction({
+            contract: CONTRACT,
+            function: 'capture',
+            args: [
+                nativeToScVal(Address.fromString(FROM), { type: 'address' }),
+                nativeToScVal(10n, { type: 'i128' }),
+                nativeToScVal('hi')
+            ]
+        });
+        const tx = new TransactionBuilder(account, { fee: '100', networkPassphrase: Networks.PUBLIC })
+            .addOperation(op).setTimeout(30).build();
+        const rawTx = {
+            hash: 'deadbeef',
+            paging_token: '1',
+            successful: true,
+            source_account: src.publicKey(),
+            source_account_sequence: '1',
+            created_at: '2026-04-15T00:00:00Z',
+            envelope_xdr: tx.toEnvelope().toXDR('base64'),
+            result_xdr: '',
+            memo_type: 'none'
+        };
+        const parsed = parseTransaction(rawTx);
+        const normalized = parsed.operations[0];
+        expect(normalized.type).to.equal('invoke_host_function');
+        expect(normalized.host_function_type).to.equal('invoke_contract');
+        expect(normalized.contract).to.equal(CONTRACT);
+        expect(normalized.function_name).to.equal('capture');
+        expect(normalized.args).to.be.an('array').with.length(3);
+        expect(normalized.args[0]).to.equal(FROM);
+        expect(normalized.args[1]).to.equal('10'); // bigint converted to string
+        expect(normalized.args[2]).to.equal('hi');
     });
 
     it('should parse extendFootprintTTL', function () {

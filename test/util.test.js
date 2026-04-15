@@ -269,6 +269,24 @@ describe('subscriptionMatchHelper.matches', function () {
         expect(matches(subscription, { memo: '99999' })).to.be.false
     })
 
+    it('filters by Soroban contract', function () {
+        const C1 = 'CAFXUALXFPTBTLSRCDSMJXNPSN3AVL2ZPXJUDDHVTUTLRX5SCNP2SISM'
+        const C2 = 'CDUYP3U6HGTOBUNQD2WTLWNMNADWMENROKZZIHGEVGKIU3ZUDF42CDOK'
+        const subscription = { contract: C1 }
+        expect(matches(subscription, { type_i: 24, contract: C1 })).to.be.true
+        expect(matches(subscription, { type_i: 24, contract: C2 })).to.be.false
+        expect(matches(subscription, { type_i: 24 })).to.be.false // no contract on op
+    })
+
+    it('combines account and contract filters with AND', function () {
+        const C1 = 'CAFXUALXFPTBTLSRCDSMJXNPSN3AVL2ZPXJUDDHVTUTLRX5SCNP2SISM'
+        const A = 'GBYH3M3REQM3WQOJY26FYORN23EXY22FWBHVZ74TT5GYOF22IIA7YSOX'
+        const subscription = { account: A, contract: C1 }
+        expect(matches(subscription, { account: A, contract: C1 })).to.be.true
+        expect(matches(subscription, { account: A, contract: 'CDUYP3U6HGTOBUNQD2WTLWNMNADWMENROKZZIHGEVGKIU3ZUDF42CDOK' })).to.be.false
+        expect(matches(subscription, { account: 'GOTHER', contract: C1 })).to.be.false
+    })
+
     describe('path_payment trades matching', function () {
         const sellerAccount = 'GAKKEOZP54PTYUX2UV3DC6NSFVKFXIINXUUGDLDKFFLSQC6QHIKY74IC'
 
@@ -545,6 +563,37 @@ describe('SubscriptionIndex', function () {
         const operation = { account: ACCOUNT_A, destination: ACCOUNT_A, type_i: 1 }
         const result = index.findMatches(operation)
         expect(result).to.have.lengthOf(1)
+    })
+
+    it('indexes subscriptions by Soroban contract', function () {
+        const C = 'CAFXUALXFPTBTLSRCDSMJXNPSN3AVL2ZPXJUDDHVTUTLRX5SCNP2SISM'
+        const index = new SubscriptionIndex()
+        const sub = { id: '1', contract: C }
+        index.add(sub)
+
+        const op = { type_i: 24, contract: C, account: 'GOTHER' }
+        expect(index.findMatches(op)).to.have.lengthOf(1)
+        expect(index.findMatches({ type_i: 24, contract: 'CDUYP3U6HGTOBUNQD2WTLWNMNADWMENROKZZIHGEVGKIU3ZUDF42CDOK' })).to.have.lengthOf(0)
+    })
+
+    it('contract-only subscriptions are NOT in catchAll', function () {
+        const C = 'CAFXUALXFPTBTLSRCDSMJXNPSN3AVL2ZPXJUDDHVTUTLRX5SCNP2SISM'
+        const index = new SubscriptionIndex()
+        const sub = { id: '1', contract: C }
+        index.add(sub)
+        // a non-soroban operation should not see the contract subscription
+        const op = { type_i: 1, account: ACCOUNT_A }
+        expect(index.findMatches(op)).to.have.lengthOf(0)
+    })
+
+    it('remove() keeps contract index in sync', function () {
+        const C = 'CAFXUALXFPTBTLSRCDSMJXNPSN3AVL2ZPXJUDDHVTUTLRX5SCNP2SISM'
+        const index = new SubscriptionIndex()
+        const sub = { id: '1', contract: C }
+        index.add(sub)
+        index.remove(sub)
+        expect(index.findMatches({ type_i: 24, contract: C })).to.have.lengthOf(0)
+        expect(index.contractIndex.size).to.equal(0)
     })
 
     it('handles many subscriptions efficiently', function () {

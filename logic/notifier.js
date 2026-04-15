@@ -150,6 +150,7 @@ class Notifier {
         const payload = {...notification.payload},
             transaction = payload.transaction_details
         delete payload.transaction_details
+        delete payload.application_order
 
         //prepare data
         const data = {

@@ -247,18 +247,22 @@
                     <label class="form-label small text-muted">Account (G...)</label>
                     <input v-model="newSub.account" class="form-control" placeholder="G...">
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-3">
+                    <label class="form-label small text-muted">Contract (C...)</label>
+                    <input v-model="newSub.contract" class="form-control" placeholder="C...">
+                </div>
+                <div class="col-md-3">
                     <label class="form-label small text-muted">Reaction URL <span class="text-danger">*</span></label>
                     <input v-model="newSub.reaction_url" class="form-control" placeholder="http://...">
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-2">
                     <label class="form-label small text-muted">Op Types (e.g. 1, 2)</label>
                     <input v-model="newSub.operation_types" class="form-control" placeholder="1">
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-1">
                     <button @click="createSubscription" class="btn btn-success w-100" :disabled="loading || !newSub.reaction_url">
                         <span v-if="loading" class="spinner-border spinner-border-sm"></span>
-                        <span v-else>➕ Создать</span>
+                        <span v-else>➕</span>
                     </button>
                 </div>
             </div>
@@ -299,6 +303,9 @@
                                         </span>
                                         <span v-if="sub.asset_code" class="badge badge-asset" :title="sub.asset_code + (sub.asset_issuer ? ' / ' + sub.asset_issuer : '')">
                                             {{ sub.asset_code }}
+                                        </span>
+                                        <span v-if="sub.contract" class="badge bg-info text-dark" :title="sub.contract">
+                                            {{ shortStr(sub.contract) }}
                                         </span>
                                     </div>
                                 </div>
@@ -474,10 +481,11 @@
             
             // Data
             const subscriptions = ref([]);
-            const newSub = reactive({ 
-                account: '', 
-                reaction_url: '', 
-                operation_types: '1' 
+            const newSub = reactive({
+                account: '',
+                contract: '',
+                reaction_url: '',
+                operation_types: '1'
             });
 
             // Init
@@ -611,14 +619,14 @@
                 const opTypes = newSub.operation_types.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
                 const payload = { reaction_url: newSub.reaction_url };
                 if (newSub.account) payload.account = newSub.account;
+                if (newSub.contract) payload.contract = newSub.contract;
                 if (opTypes.length > 0) payload.operation_types = opTypes;
 
                 const res = await request(config.routes.subscriptions, 'POST', payload);
                 if (res && res.id) {
-                    // Success
-                    newSub.account = ''; // Clear fields but keep URL maybe?
-                    // newSub.reaction_url = ''; 
-                    await getSubscriptions(); // Refresh list
+                    newSub.account = '';
+                    newSub.contract = '';
+                    await getSubscriptions();
                 }
             };
 

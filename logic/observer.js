@@ -16,7 +16,7 @@ function arraysEqual(a, b) {
     return sortedA.every((v, i) => v === sortedB[i])
 }
 
-const DEDUP_FIELDS = ['pubkey', 'reaction_url', 'account', 'memo', 'asset_type', 'asset_code', 'asset_issuer']
+const DEDUP_FIELDS = ['pubkey', 'reaction_url', 'account', 'contract', 'memo', 'asset_type', 'asset_code', 'asset_issuer']
 
 function subscriptionHash(s) {
     const opTypes = s.operation_types ? [...s.operation_types].sort().join(',') : ''

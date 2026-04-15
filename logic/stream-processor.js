@@ -1,6 +1,7 @@
-const {TransactionBuilder, xdr, StrKey} = require('@stellar/stellar-sdk'),
+const {TransactionBuilder, xdr, StrKey, scValToNative} = require('@stellar/stellar-sdk'),
     BigNumber = require('bignumber.js'),
     {parseAsset, nativeAsset} = require('../util/asset-helper'),
+    {stringifyBigInts} = require('../util/soroban-helper'),
     config = require('../models/config')
 
 function stroopsToAmount(stroops) {
@@ -430,15 +431,36 @@ function normalizeOperation(operation) {
                 minAmountA: operation.minAmountA,
                 minAmountB: operation.minAmountB
             }
-        case 'invokeHostFunction':
-            return {
+        case 'invokeHostFunction': {
+            const normalized = {
                 type: 'invoke_host_function',
-                type_i: 24,
-                function: operation.function,
-                parameters: operation.parameters,
-                footprint: operation.footprint,
-                authority: operation.authority
+                type_i: 24
             }
+            const hf = operation.func
+            if (hf) {
+                const sw = hf.switch().name
+                if (sw === 'hostFunctionTypeInvokeContract') {
+                    normalized.host_function_type = 'invoke_contract'
+                    try {
+                        const inv = hf.invokeContract()
+                        normalized.contract = StrKey.encodeContract(inv.contractAddress().contractId())
+                        normalized.function_name = inv.functionName().toString()
+                        try {
+                            normalized.args = inv.args().map(a => stringifyBigInts(scValToNative(a)))
+                        } catch (e) {
+                            normalized.args = null
+                        }
+                    } catch (e) {
+                        // fall through — partial decoding
+                    }
+                } else if (sw === 'hostFunctionTypeCreateContract' || sw === 'hostFunctionTypeCreateContractV2') {
+                    normalized.host_function_type = 'create_contract'
+                } else if (sw === 'hostFunctionTypeUploadContractWasm') {
+                    normalized.host_function_type = 'upload_wasm'
+                }
+            }
+            return normalized
+        }
         case 'extendFootprintTTL':
             return {
                 type: 'extend_footprint_ttl',
@@ -463,6 +485,7 @@ function processOperation(operation, txDetails, applicationOrder) {
     // see https://github.com/stellar/go/blob/6a367049e8f9ad52798f5c8f69df8b875fde4a1a/services/horizon/internal/toid/main.go
     normalized.id = new BigNumber(txDetails.paging_token).plus(new BigNumber(applicationOrder + 1)).toString()
     normalized.account = normalized.account || operation.source || txDetails.source
+    normalized.application_order = applicationOrder
     normalized.transaction_details = txDetails
 
     // Parse trades and actual amounts from result_xdr for path_payment operations

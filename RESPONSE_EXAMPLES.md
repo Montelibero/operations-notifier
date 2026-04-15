@@ -842,28 +842,68 @@
 
 ## 24 | invoke_host_function
 
+Для Soroban-вызовов в `operation` попадают декодированные поля:
+
+- `host_function_type` — `invoke_contract`, `create_contract` или `upload_wasm`
+- `contract` — адрес вызываемого контракта (только для `invoke_contract`)
+- `function_name` — имя метода
+- `args` — аргументы, декодированные через `scValToNative`. Значения `i128/u128/i64/u64` отдаются **строкой** (JSON не может хранить bigint), буферы — base64
+- `events` — события контрактов (из Soroban RPC, если `sorobanRpcUrl` настроен и операция матчит подписку). **Не фильтруются по `operation.contract`** — сюда попадают в том числе события от SAC-контрактов токенов, переведённых внутри вызова. Каждое событие: `{contract, type, topics, data}`
+- `return_value` — декодированное возвращаемое значение
+
+Пример (реальная транзакция
+[`dbf9a5c2...`](https://stellar.expert/explorer/public/tx/dbf9a5c2bf8600dd97b7bd4465bc19b252d070e5a25828f315df99f7dad37a2d),
+вызов `capture(address, i128, string)` — контракт забирает 10 stroops EURMTL
+и сохраняет сообщение):
+
 ```json
 {
   "operation": {
     "type": "invoke_host_function",
     "type_i": 24,
-    "id": "261832540783890433",
-    "account": "GDRI3GQG6AK3NKSVJSUGQOYWEUDIGEZCGM3JS2Q7UCFNNMHBL52Q25NC"
+    "id": "266797664711667713",
+    "account": "GBYH3M3REQM3WQOJY26FYORN23EXY22FWBHVZ74TT5GYOF22IIA7YSOX",
+    "host_function_type": "invoke_contract",
+    "contract": "CAFXUALXFPTBTLSRCDSMJXNPSN3AVL2ZPXJUDDHVTUTLRX5SCNP2SISM",
+    "function_name": "capture",
+    "args": [
+      "GBYH3M3REQM3WQOJY26FYORN23EXY22FWBHVZ74TT5GYOF22IIA7YSOX",
+      "10",
+      "Всё летит по плану!"
+    ],
+    "events": [
+      {
+        "type": "contract",
+        "contract": "CDUYP3U6HGTOBUNQD2WTLWNMNADWMENROKZZIHGEVGKIU3ZUDF42CDOK",
+        "topics": [
+          "transfer",
+          "GBYH3M3REQM3WQOJY26FYORN23EXY22FWBHVZ74TT5GYOF22IIA7YSOX",
+          "CAFXUALXFPTBTLSRCDSMJXNPSN3AVL2ZPXJUDDHVTUTLRX5SCNP2SISM",
+          "EURMTL:GACKTN5DAZGWXRWB2WLM6OPBDHAMT6SJNGLJZPQMEZBUR4JUGBX2UK7V"
+        ],
+        "data": "10"
+      }
+    ],
+    "return_value": true
   },
   "transaction": {
-    "hash": "8cc6f340047080a73b1da694e1c7875e39a11ab54b0e0ab41367a7ca767246ec",
+    "hash": "dbf9a5c2bf8600dd97b7bd4465bc19b252d070e5a25828f315df99f7dad37a2d",
     "fee": "144780",
     "fee_charged": "103058",
-    "max_fee": "144881",
-    "source": "GDRI3GQG6AK3NKSVJSUGQOYWEUDIGEZCGM3JS2Q7UCFNNMHBL52Q25NC",
-    "paging_token": "261832540783890432",
-    "source_account_sequence": "259186630475169261",
-    "created_at": "2026-01-27T15:37:22Z",
+    "source": "GBYH3M3REQM3WQOJY26FYORN23EXY22FWBHVZ74TT5GYOF22IIA7YSOX",
+    "paging_token": "266797664711667712",
+    "created_at": "2026-04-14T18:02:56Z",
     "result_xdr": "AAAAAAAAAJQA...",
     "envelope_xdr": "AAAAAgAAAAB..."
   }
 }
 ```
+
+Обратите внимание: событие `transfer` эмитит SAC-контракт токена EURMTL
+(`CDUYP3U6...`), а не вызываемый `CAFXUALX...` — в топиках виден сам трансфер
+10 stroops EURMTL от пользователя контракту. Фильтруйте `events` на стороне
+получателя по `event.contract`, если нужно отделить события вызываемого
+контракта от трансферов SAC.
 
 ---
 

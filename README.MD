@@ -347,7 +347,7 @@ Admin requests can use `Authorization: <ADMIN_AUTHENTICATION_TOKEN>` in any mode
 
 ```
 {
-  "version": "0.8.0",
+  "version": "0.9.0",
   "uptime": "3h 10m 42s",
   "publicKey": "G...SIGNER...",
   "observing": true,
@@ -445,11 +445,14 @@ POST /api/subscription
 - **reaction_url** [*string*] (mandatory) - a full URL that should be requested
 by notification
 - **account** [*string*] (optional) - an account address to track
+- **contract** [*string*] (optional) - a Soroban contract address (`C...`) to
+track. Matches `invokeHostFunction` operations whose target contract equals
+this address. Combined with other filters by AND.
 - **memo** [*string*] (optional) - expected transaction memo
 - **asset_code** [*string*] (optional) - asset code to track (specify XLM and no
 issuer to track operations involving XLM)
 - **asset_issuer** [*string*] (optional) - asset issuer to track
-- **operation_types** [*Array\<Number\>*] (optional) - operation types to track (currently 0..10),
+- **operation_types** [*Array\<Number\>*] (optional) - operation types to track (currently 0..26),
 array or comma-separated string. You can find numbers at
 https://developers.stellar.org/docs/data/analytics/hubble/data-catalog/data-dictionary/bronze/history-operations
 - **expires** [*date/epoch*] (optional) - expiration date for subscription
@@ -745,6 +748,65 @@ Notifications are sent as JSON-encoded POST requests with the following format:
 ```
 
 See [RESPONSE_EXAMPLES.md](RESPONSE_EXAMPLES.md) for examples of all operation types.
+
+### Soroban contract invocations (operation type 24)
+
+For `invoke_host_function` operations, the notifier decodes the host function
+from the transaction envelope and attaches the following fields to
+`operation`:
+
+- **host_function_type** — one of `invoke_contract`, `create_contract`, `upload_wasm`.
+- **contract** — Soroban contract address (`C...`) being invoked. Only set
+  for `invoke_contract`.
+- **function_name** — the contract method being called (e.g. `transfer`).
+- **args** — array of arguments, decoded via `scValToNative`. `i128`/`u128`/
+  `i64`/`u64` values are returned as decimal **strings** (JSON can't hold
+  bigints). Buffers become base64 strings.
+
+If `sorobanRpcUrl` is configured, the notifier additionally fetches the
+transaction meta from the Soroban RPC (Horizon does not expose it) **only
+when at least one subscription matches the operation** and attaches:
+
+- **events** — array of contract events emitted during the invocation. Each
+  entry has `{contract, type, topics, data}`. Events are returned unfiltered
+  (including those emitted by SAC contracts of tokens transferred inside the
+  call) — filter by `event.contract` on the receiver side if needed.
+- **return_value** — the decoded contract return value.
+
+Example webhook payload for a Soroban invocation:
+
+```json
+{
+  "operation": {
+    "id": "266797664711667713",
+    "type": "invoke_host_function",
+    "type_i": 24,
+    "host_function_type": "invoke_contract",
+    "contract": "CAFXUALXFPTBTLSRCDSMJXNPSN3AVL2ZPXJUDDHVTUTLRX5SCNP2SISM",
+    "function_name": "capture",
+    "args": [
+      "GBYH3M3REQM3WQOJY26FYORN23EXY22FWBHVZ74TT5GYOF22IIA7YSOX",
+      "10",
+      "Всё летит по плану!"
+    ],
+    "events": [
+      {
+        "type": "contract",
+        "contract": "CDUYP3U6HGTOBUNQD2WTLWNMNADWMENROKZZIHGEVGKIU3ZUDF42CDOK",
+        "topics": ["transfer", "GBYH...", "CAFXUALX...", "EURMTL:GACKTN5D..."],
+        "data": "10"
+      }
+    ],
+    "return_value": true
+  }
+}
+```
+
+Configure the RPC endpoint via `sorobanRpcUrl` in `app.config.json` or the
+`SOROBAN_RPC_URL` environment variable. Default is
+`https://mainnet.sorobanrpc.com`. Set it to an empty string to disable Soroban
+meta decoding entirely — contract/function_name/args are still populated
+since they come from the transaction envelope.
 
 Request headers:
 

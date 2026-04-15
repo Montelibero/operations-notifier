@@ -1,3 +1,16 @@
+0.9.0 / 2026-04-15
+==================
+
+* Add Soroban contract subscription filter — `contract` (C...) field on
+  subscriptions matches `invokeHostFunction` operations by target contract.
+* Decode `host_function_type`, `contract`, `function_name` and `args` from
+  the transaction envelope for all `invoke_host_function` operations.
+* Fetch Soroban transaction meta via Soroban RPC (new `sorobanRpcUrl` config)
+  and attach decoded `events` + `return_value` to matching notifications.
+* Webhook payload serializes Soroban i128/u128/i64/u64 values as decimal
+  strings (JSON bigint-safe) and buffers as base64.
+* Admin UI: contract input in subscription form and contract badge on cards.
+
 0.8.0 / 2026-03-21
 ==================
 

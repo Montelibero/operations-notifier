@@ -30,6 +30,14 @@ services:
       # HORIZON_ALLOW_HTTP: "false" # set true for local HTTP mocks
       # NETWORK_PASSPHRASE: "Public Global Stellar Network ; September 2015"
 
+      # Soroban RPC — used to fetch transaction meta (events + return_value)
+      # for invokeHostFunction operations that match a subscription.
+      # Horizon does not expose result_meta_xdr, so decoding events/return
+      # value requires a separate Soroban RPC endpoint. Set to an empty
+      # string to disable; contract/function_name/args are still populated
+      # from the tx envelope either way.
+      SOROBAN_RPC_URL: "https://mainnet.sorobanrpc.com"
+
 # Auth
       # ADMIN_AUTHENTICATION_TOKEN: "" # admin token (optional)
       # USER_TOKENS: "tokenA,tokenB,tokenC" # used in AUTHORIZATION=token mode

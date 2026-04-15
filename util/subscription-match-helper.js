@@ -9,6 +9,7 @@ const {parseAsset, assetsEqual} = require('./asset-helper')
 function matches(subscription, operation) {
     if (subscription.memo && operation.memo != subscription.memo) return false //intended type casting
     if (subscription.operation_types && subscription.operation_types.length && !subscription.operation_types.includes(operation.type_i)) return false
+    if (subscription.contract && operation.contract !== subscription.contract) return false
     if (subscription.account && operation.account !== subscription.account && operation.destination !== subscription.account) {
         // For manage_data operations, also check if value contains the subscribed address
         if (operation.type_i === 10 && operation.value) {
