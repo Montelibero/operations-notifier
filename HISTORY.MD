@@ -1,3 +1,9 @@
+0.9.1 / 2026-06-09
+==================
+
+* Fix `source_amount` for multi-fill `path_payment_strict_receive` operations.
+* Document source amount calculation for path payment webhook payloads.
+
 0.9.0 / 2026-04-15
 ==================
 

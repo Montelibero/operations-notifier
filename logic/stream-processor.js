@@ -40,6 +40,12 @@ function normalizeXdrAsset(xdrAsset) {
     return null
 }
 
+function assetsEqual(a, b) {
+    if (!a || !b || a.asset_type !== b.asset_type) return false
+    if (a.asset_type === 0) return true
+    return a.asset_code === b.asset_code && a.asset_issuer === b.asset_issuer
+}
+
 /**
  * Parse manage offer result XDR to extract created_offer_id and claimed trades.
  * @param {string} resultXdr - Base64-encoded transaction result XDR
@@ -129,9 +135,10 @@ function parseManageOfferResult(resultXdr, operationIndex) {
  * @param {string} resultXdr - Base64-encoded transaction result XDR
  * @param {number} operationIndex - Index of the operation in the transaction
  * @param {string} opType - Operation type ('path_payment_strict_send' or 'path_payment_strict_receive')
+ * @param {Object} sourceAsset - Source asset for strict receive source amount calculation
  * @returns {Object} Object with trades array and actual amounts (dest_amount for strict_send, source_amount for strict_receive)
  */
-function parsePathPaymentTrades(resultXdr, operationIndex, opType) {
+function parsePathPaymentTrades(resultXdr, operationIndex, opType, sourceAsset) {
     const emptyResult = { trades: [] }
     try {
         const result = xdr.TransactionResult.fromXDR(resultXdr, 'base64')
@@ -198,10 +205,13 @@ function parsePathPaymentTrades(resultXdr, operationIndex, opType) {
                 // For strict_send: last.amount is the actual destination amount received
                 resultObj.dest_amount = destAmount
             } else if (opType === 'path_payment_strict_receive') {
-                // For strict_receive: calculate source_amount from first trade's amount_bought
-                // The source_amount is what was actually spent from the source asset
                 if (trades.length > 0) {
-                    resultObj.source_amount = trades[0].amount_bought
+                    const sourceTrades = sourceAsset
+                        ? trades.filter(trade => assetsEqual(trade.asset_bought, sourceAsset))
+                        : [trades[0]]
+                    resultObj.source_amount = sourceTrades
+                        .reduce((sum, trade) => sum.plus(trade.amount_bought || 0), new BigNumber(0))
+                        .toFixed(7)
                 }
             }
         }
@@ -490,7 +500,7 @@ function processOperation(operation, txDetails, applicationOrder) {
 
     // Parse trades and actual amounts from result_xdr for path_payment operations
     if ((normalized.type === 'path_payment_strict_send' || normalized.type === 'path_payment_strict_receive') && txDetails.result_xdr) {
-        const pathResult = parsePathPaymentTrades(txDetails.result_xdr, applicationOrder, normalized.type)
+        const pathResult = parsePathPaymentTrades(txDetails.result_xdr, applicationOrder, normalized.type, normalized.source_asset)
         normalized.trades = pathResult.trades
         if (pathResult.dest_amount !== undefined) {
             normalized.dest_amount = pathResult.dest_amount

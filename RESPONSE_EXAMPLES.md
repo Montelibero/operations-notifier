@@ -133,6 +133,11 @@
 }
 ```
 
+`source_amount` for `path_payment_strict_receive` is the amount of `source_asset`
+actually spent. If the source hop is split across several order book offers,
+the notifier sums `amount_bought` only for trades whose `asset_bought` matches
+`source_asset`; intermediate path hops are not included in this sum.
+
 ---
 
 ## 3 | manage_sell_offer
@@ -986,7 +991,7 @@
 - `asset_type`: 0 = native (XLM), 1 = credit_alphanum4, 2 = credit_alphanum12
 - `memo.value` — для text это UTF-8 строка, для id это строка с числом, для hash/return это base64
 - `trades` присутствует только в path_payment операциях и содержит информацию об исполненных сделках (включая `asset_sold` и `asset_bought`)
-- `source_amount` — реально потраченная сумма source asset (только для `path_payment_strict_receive`)
+- `source_amount` — реально потраченная сумма source asset (только для `path_payment_strict_receive`); если source hop исполнен несколькими офферами, суммируются только trades с `asset_bought`, совпадающим с `source_asset`
 - `dest_amount` — реально полученная сумма dest asset (только для `path_payment_strict_send`)
 - `created_offer_id` — ID созданного оффера (только для `manage_sell_offer`/`manage_buy_offer` когда `offerId: "0"` и ордер не был полностью исполнен)
 - `result_xdr` — XDR-encoded результат транзакции

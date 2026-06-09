@@ -192,6 +192,9 @@ describe('stream-processor', function () {
         // Transaction 8d861b3d0c1e8501f150ca0d2f5bd7621b81c909f3b1615a8b8e73b3801c81cb
         // Contains 4 liquidity pool trades and 2 order book trades
         const pathPaymentResultXdr = 'AAAAAAAAAGQAAAAAAAAAAQAAAAAAAAANAAAAAAAAAAYAAAACL5Qn+uJYb74IrdtGCko+fLFr2yojKLu3m36C6/8H5TcAAAABWExNAAAAAAAIFKTA1/lfmfT8cLAEmz2xeS2Z3zh4u1mhED+hjNFuzAAABq+EG70QAAAAAAAAAAAAAM0UAAAAApPcmoq4J6AZean6PySVw3PxDj6VWyQRRbU5DW+OVdbdAAAAAU9MVAAAAAAAL67mruJq8g1bj8lCiNVHbidAzKmg3NSrNjUbTCiAbawAAAAADhIvngAAAAFYTE0AAAAAAAgUpMDX+V+Z9PxwsASbPbF5LZnfOHi7WaEQP6GM0W7MAAAGr4QbvRAAAAACgg2uOCvWZHWpZVFxcCGp5X3zwjCOH479kPp3TX9Nf3YAAAACeFJVTkVTAAAAAAAAAAAAAJcJfuPGW8U+3ZTTWqzylg/R4DC4xMybrxWCad9EBRHeAAAAAAFZa70AAAABTkxUAAAAAAAvruau4mryDVuPyUKI1UduJ0DMqaDc1Ks2NRtMKIBtrAAAAAAOEi+eAAAAAihQrEoo1cdE4p+BpW/Oix6Hk06JrJIYvE2pZ/OZ0anJAAAAAlNERVhFWAAAAAAAAAAAAABgdg42ru1O4AINKCDjmPPfYKb27YUjdun2yi4e6WmvggAAAAAODtlCAAAAAnhSVU5FUwAAAAAAAAAAAACXCX7jxlvFPt2U01qs8pYP0eAwuMTMm68VgmnfRAUR3gAAAAABWWu9AAAAAQAAAACdd7Jzw2JRgO7qhWkiKm7tcVghjplqnuZH5XQMjp1mGgAAAABjLOCDAAAAAAAAAAAAANAuAAAAAlNERVhFWAAAAAAAAAAAAABgdg42ru1O4AINKCDjmPPfYKb27YUjdun2yi4e6WmvggAAAAAODtlCAAAAAQAAAABtfzycOy3ID8X/LBcX0lb34EUi64MDCS6264IMhli7JQAAAABjKo3+AAAAAXlYTE0AAAAAIjbXcP4NPgFSGXXVz3rEhCtwldaxqddo0+mmMumZBr4AAAAAAADQLgAAAAAAAAAAAADQLgAAAAAZuKPiuNAtcn2d682XJkONZHHDPYRIu5MemLtevYBqSwAAAAF5WExNAAAAACI213D+DT4BUhl11c96xIQrcJXWsanXaNPppjLpmQa+AAAAAAAA0C4AAAAA';
+        // Real result_xdr from operation 270379998148956161.
+        // path_payment_strict_receive spent 2985.0526179 USDC via four order book trades.
+        const multiTradeStrictReceiveResultXdr = 'AAAAAAAAAGQAAAAAAAAAAQAAAAAAAAACAAAAAAAAAAQAAAABAAAAAP8DCB2vvCODV1lIzf6ZFjZZOltiGAlvPj24+4e76hrGAAAAAG3mJjwAAAACRVVSTVRMAAAAAAAAAAAAAASpt6MGTWvGwdWWzznhGcDJ+klplpy+DCZDSPE0MG+qAAAAAAAAAIoAAAABVVNEQwAAAAA7mRE4Dv6Yi6CokA6xz+RPNm99vpRr7QdyQPf2JN8VxQAAAAAAAAChAAAAAQAAAADlC4Lr/vutTpwFIJ0lduBSpYFLfNCr2lIozTPRXcdsJgAAAABt5bPbAAAAAkVVUk1UTAAAAAAAAAAAAAAEqbejBk1rxsHVls854RnAyfpJaZacvgwmQ0jxNDBvqgAAAAD3oAIIAAAAAVVTREMAAAAAO5kROA7+mIugqJAOsc/kTzZvfb6Ua+0HckD39iTfFcUAAAABJsqtFQAAAAEAAAAA8KsTN0t/qNpMJKZoJkozPh9w3C231SFgzlQmgJ4sBckAAAAAbdtJvAAAAAJFVVJNVEwAAAAAAAAAAAAABKm3owZNa8bB1ZbPOeEZwMn6SWmWnL4MJkNI8TQwb6oAAAAEZQGVmwAAAAFVU0RDAAAAADuZETgO/piLoKiQDrHP5E82b32+lGvtB3JA9/Yk3xXFAAAABUACscYAAAABAAAAABwLgMgri3gbo+uW1L2vjY6FVjE4TnO3SbaNHTbvigkgAAAAAG3hsbcAAAACRVVSTVRMAAAAAAAAAAAAAASpt6MGTWvGwdWWzznhGcDJ+klplpy+DCZDSPE0MG+qAAAAAHV8IdMAAAABVVNEQwAAAAA7mRE4Dv6Yi6CokA6xz+RPNm99vpRr7QdyQPf2JN8VxQAAAACMbYJnAAAAAGqL+Fnv5HuczwcAv4wCa3N+I0sSkABusKONM1sQxXEiAAAAAkVVUk1UTAAAAAAAAAAAAAAEqbejBk1rxsHVls854RnAyfpJaZacvgwmQ0jxNDBvqgAAAAXSHboAAAAAAA==';
 
         it('should return empty trades array for invalid XDR', function () {
             const result = parsePathPaymentTrades('invalid_xdr', 0, 'path_payment_strict_send');
@@ -253,12 +256,24 @@ describe('stream-processor', function () {
         });
 
         it('should return source_amount for path_payment_strict_receive', function () {
-            const result = parsePathPaymentTrades(pathPaymentResultXdr, 0, 'path_payment_strict_receive');
+            const result = parsePathPaymentTrades(multiTradeStrictReceiveResultXdr, 0, 'path_payment_strict_receive', {
+                asset_type: 1,
+                asset_code: 'USDC',
+                asset_issuer: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN'
+            });
             expect(result).to.have.property('source_amount');
-            // source_amount is the first trade's amount_bought
             expect(result.source_amount).to.be.a('string');
-            // The first trade's amount_bought from the XDR = 0.0052500
-            expect(result.source_amount).to.equal('0.0052500');
+            expect(result.source_amount).to.equal('2985.0526179');
+        });
+
+        it('should sum source_amount for multi-trade path_payment_strict_receive', function () {
+            const result = parsePathPaymentTrades(multiTradeStrictReceiveResultXdr, 0, 'path_payment_strict_receive', {
+                asset_type: 1,
+                asset_code: 'USDC',
+                asset_issuer: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN'
+            });
+            expect(result.trades.length).to.equal(4);
+            expect(result.source_amount).to.equal('2985.0526179');
         });
 
         it('should return object with trades array', function () {

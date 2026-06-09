@@ -347,7 +347,7 @@ Admin requests can use `Authorization: <ADMIN_AUTHENTICATION_TOKEN>` in any mode
 
 ```
 {
-  "version": "0.9.0",
+  "version": "0.9.1",
   "uptime": "3h 10m 42s",
   "publicKey": "G...SIGNER...",
   "observing": true,
