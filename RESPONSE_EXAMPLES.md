@@ -484,7 +484,7 @@ the notifier sums `amount_bought` only for trades whose `asset_bought` matches
 {
   "operation": {
     "type_i": 12,
-    "type": "manage_sell_offer",
+    "type": "manage_buy_offer",
     "asset": {
       "asset_type": 1,
       "asset_code": "EURC",

@@ -1,3 +1,9 @@
+0.9.2 / 2026-09-10
+==================
+
+* Fix operation type for `manageBuyOffer` (`manage_buy_offer` instead of `manage_sell_offer`).
+* Update response examples and result XDR parsing for `manage_buy_offer`.
+
 0.9.1 / 2026-06-09
 ==================
 

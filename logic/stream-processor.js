@@ -281,9 +281,9 @@ function normalizeOperation(operation) {
         case 'manageBuyOffer':
             return {
                 type_i: 12,
-                type: 'manage_sell_offer',
+                type: 'manage_buy_offer',
                 asset: normalizeAsset(operation.buying),
-                amount: operation.buyAmount ,
+                amount: operation.buyAmount,
                 source_asset: normalizeAsset(operation.selling),
                 price: operation.price,
                 offerId: operation.offerId || '0'
@@ -511,7 +511,7 @@ function processOperation(operation, txDetails, applicationOrder) {
     }
 
     // Parse claimed trades and created_offer_id from result_xdr for manage offer operations
-    if (normalized.type === 'manage_sell_offer' && txDetails.result_xdr) {
+    if ((normalized.type === 'manage_sell_offer' || normalized.type === 'manage_buy_offer') && txDetails.result_xdr) {
         const offerResult = parseManageOfferResult(txDetails.result_xdr, applicationOrder)
         if (offerResult.trades?.length) {
             normalized.trades = offerResult.trades

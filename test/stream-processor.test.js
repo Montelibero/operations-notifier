@@ -127,6 +127,37 @@ describe('stream-processor', function () {
         expect(parsed.operations[0].type).to.equal('liquidity_pool_withdraw');
     });
 
+    it('should parse manageSellOffer', function () {
+        const operation = {
+            type: 'manageSellOffer',
+            buying: { code: 'USD', issuer: 'GDUN55P4M332X24DYIUI64HLM3224525Y4DO6T43Y443P2P5C5Z5Y5N5' },
+            selling: { code: 'EUR', issuer: 'GDUN55P4M332X24DYIUI64HLM3224525Y4DO6T43Y443P2P5C5Z5Y5N5' },
+            amount: '100',
+            price: '1.5',
+            offerId: '123'
+        };
+        const tx = createTxMock(operation);
+        const parsed = parseTransaction(tx);
+        expect(parsed.operations[0].type_i).to.equal(3);
+        expect(parsed.operations[0].type).to.equal('manage_sell_offer');
+    });
+
+    it('should parse manageBuyOffer', function () {
+        const operation = {
+            type: 'manageBuyOffer',
+            buying: { code: 'USD', issuer: 'GDUN55P4M332X24DYIUI64HLM3224525Y4DO6T43Y443P2P5C5Z5Y5N5' },
+            selling: { code: 'EUR', issuer: 'GDUN55P4M332X24DYIUI64HLM3224525Y4DO6T43Y443P2P5C5Z5Y5N5' },
+            buyAmount: '100',
+            price: '1.5',
+            offerId: '123'
+        };
+        const tx = createTxMock(operation);
+        const parsed = parseTransaction(tx);
+        expect(parsed.operations[0].type_i).to.equal(12);
+        expect(parsed.operations[0].type).to.equal('manage_buy_offer');
+        expect(parsed.operations[0].amount).to.equal('100');
+    });
+
     it('should parse invokeHostFunction', function () {
         const operation = { type: 'invokeHostFunction', function: 'HostFunctionTypeHostFunctionTypeInvokeContract', parameters: [], footprint: { readOnly: [], readWrite: [] }, authority: [] };
         const tx = createTxMock(operation);
