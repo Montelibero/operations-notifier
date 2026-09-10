@@ -2,7 +2,7 @@
   "name": "@stellar-expert/operations-notifier",
   "license": "MIT",
   "private": true,
-  "version": "0.9.2",
+  "version": "0.9.3",
   "author": "orbitlens<orbit.lens@stellar.expert>",
   "description": "Stellar operations observer and notifier.",
   "main": "app.js",
@@ -30,7 +30,7 @@
     "node": ">=20.0.0"
   },
   "dependencies": {
-    "@stellar/stellar-sdk": "^14.4.1",
+    "@stellar/stellar-sdk": "^16.3.0",
     "axios": "1.13.2",
     "body-parser": "^2.2.1",
     "cors": "^2.8.5",

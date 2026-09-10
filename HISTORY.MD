@@ -1,3 +1,8 @@
+0.9.3 / 2026-09-10
+==================
+
+* Upgrade `@stellar/stellar-sdk` to `16.3.0` to support new Protocol 22/23 Soroban authorization credentials XDR types (`sorobanCredentialsAddressV2`, etc.).
+
 0.9.2 / 2026-09-10
 ==================
 
