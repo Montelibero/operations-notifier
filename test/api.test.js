@@ -289,6 +289,48 @@ describe('API', function () {
             })
         })
 
+        describe('/GET status/pool-check', () => {
+            const stellarConnector = require('../logic/stellar-connector')
+            afterEach(() => sinon.restore())
+
+            it('requires authentication', async () => {
+                try {
+                    await axiosInstance.get('/api/status/pool-check')
+                    throw new Error('should have failed')
+                } catch (err) {
+                    expect(err.response.status).to.equal(401)
+                }
+            })
+
+            it('is forbidden for non-admin users', async () => {
+                const payload = encodeUrlParams({ nonce: Date.now() })
+                const signature = signData(newUserKeyPair, payload)
+                try {
+                    await axiosInstance.get('/api/status/pool-check?' + payload, {
+                        headers: { authorization: `${newUserKeyPair.publicKey()}.${signature}` }
+                    })
+                    throw new Error('should have failed')
+                } catch (err) {
+                    expect(err.response.status).to.equal(403)
+                }
+            })
+
+            it('checks every pool server for admins', async () => {
+                sinon.stub(stellarConnector, 'checkHorizonServers').resolves([
+                    {url: 'https://hz1', active: true, state: 'ok', latestLedger: 100, responseMs: 20, lag: 0, error: null},
+                    {url: 'https://hz2', active: false, state: 'down', latestLedger: 98, responseMs: 30, lag: 2, error: null}
+                ])
+                const res = await axiosInstance.get('/api/status/pool-check', {
+                    headers: { authorization: config.adminAuthenticationToken }
+                })
+                expect(res.status).to.equal(200)
+                expect(res.data.checkedAt).to.be.a('string')
+                expect(res.data.horizon).to.have.length(2)
+                expect(res.data.horizon[1]).to.include({url: 'https://hz2', state: 'down', lag: 2})
+                expect(res.data.sorobanRpc).to.equal(null) // not configured in the test config
+            })
+        })
+
         describe('/GET nonce', () => {
             it('it should GET nonce without providing nonce param', async () => {
                 const payload = `nonce:${newUserKeyPair.publicKey()}`

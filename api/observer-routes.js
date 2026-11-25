@@ -1,6 +1,9 @@
 const pkgInfo = require('../package'),
     {signer} = require('../util/signer'),
     {getOperationTypeMembers} = require('../util/operation-types'),
+    stellarConnector = require('../logic/stellar-connector'),
+    {horizonPool} = stellarConnector,
+    sorobanRpc = require('../logic/soroban-rpc-client'),
     observer = require('../logic/observer'),
     storage = require('../logic/storage'),
     {elapsed} = require('../util/elapsed-time'),
@@ -53,15 +56,28 @@ module.exports = function (app) {
         if (watcherHealth.healthy) {
             return res.json({
                 status: 'ok',
-                watcher: watcherHealth
+                watcher: watcherHealth,
+                servers: {horizon: horizonPool.activeUrl || horizonPool.fallbackUrl, sorobanRpc: sorobanRpc.client ? (sorobanRpc.client.getStatus().active || sorobanRpc.client.pool.fallbackUrl) : null}
             })
         }
 
         return res.status(503).json({
             status: 'unhealthy',
             reason: watcherHealth.reason || 'watcher_unhealthy',
-            watcher: watcherHealth
+            watcher: watcherHealth,
+            servers: {horizon: horizonPool.activeUrl || horizonPool.fallbackUrl, sorobanRpc: sorobanRpc.client ? (sorobanRpc.client.getStatus().active || sorobanRpc.client.pool.fallbackUrl) : null}
         })
+    })
+
+    //check every server of the Horizon / Soroban RPC pools on demand (admin only)
+    app.get('/api/status/pool-check', auth.userRequiredMiddleware, (req, res, next) => {
+        if (!auth.isInRole(req, roles.ADMIN)) return next(errors.forbidden())
+        Promise.all([
+            stellarConnector.checkHorizonServers(),
+            sorobanRpc.client ? sorobanRpc.client.checkServers() : Promise.resolve(null)
+        ])
+            .then(([horizon, sorobanRpcServers]) => res.json({checkedAt: new Date().toISOString(), horizon, sorobanRpc: sorobanRpcServers}))
+            .catch(next)
     })
 
     //get application status
@@ -97,6 +113,8 @@ module.exports = function (app) {
                         lastRecoveryAttemptAt: streamStatus.lastRecoveryAttemptAt,
                         lastErrorAt: streamStatus.lastErrorAt,
                         lastErrorMessage: streamStatus.lastErrorMessage,
+                        horizon: streamStatus.horizon ?? null,
+                        sorobanRpc: streamStatus.sorobanRpc ?? null,
                         healthy: streamStatus.healthy
                     }
                     : null

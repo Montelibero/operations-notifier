@@ -1,23 +1,28 @@
-const logger = require('../util/logger')
-const config = require('../models/config')
+const logger = require('../util/logger'),
+    config = require('../models/config'),
+    {ServerPool} = require('./server-pool'),
+    {rpcTransport} = require('./soroban-rpc-transport'),
+    {getFailoverOptions, poolUrls} = require('./stellar-connector'),
+    {sanitizeUrlForLogs} = require('../util/log-redaction')
 
 /**
  * Minimal Soroban RPC client — fetches transaction meta (resultMetaXdr)
  * that public Horizon instances do not expose.
  *
+ * Failover: `sorobanRpcPool` may list several RPC servers (the first one is
+ * preferred); the same failover rules as for Horizon apply (see server-pool.js).
+ *
  * In-flight deduplication: concurrent getTransaction(hash) calls share a
- * single HTTP request. Resolved entries are cached for a short TTL so that
+ * single request. Resolved entries are cached for a short TTL so that
  * several matching operations within the same tx don't each hit the RPC.
  */
 
 const DEFAULT_TTL_MS = 30_000
-const REQUEST_TIMEOUT_MS = 10_000
 
 class SorobanRpcClient {
-    constructor(url) {
-        this.url = url
+    constructor(pool) {
+        this.pool = pool
         this.cache = new Map() // hash -> {expires, promise}
-        this.requestId = 0
     }
 
     /**
@@ -46,42 +51,39 @@ class SorobanRpcClient {
     }
 
     async _fetchTransaction(hash) {
-        const body = {
-            jsonrpc: '2.0',
-            id: ++this.requestId,
-            method: 'getTransaction',
-            params: {hash}
-        }
-        const controller = new AbortController()
-        const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
-        let res
-        try {
-            res = await fetch(this.url, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(body),
-                signal: controller.signal
-            })
-        } finally {
-            clearTimeout(timer)
-        }
-        if (!res.ok) {
-            throw new Error(`HTTP ${res.status}`)
-        }
-        const json = await res.json()
-        if (json.error) {
-            throw new Error(`${json.error.code}: ${json.error.message}`)
-        }
-        return json.result || null
+        return this.pool.call({method: 'getTransaction', params: {hash}})
+    }
+
+    getStatus() {
+        return this.pool.getStatus()
+    }
+
+    /**
+     * On-demand check of every RPC server in the pool (admin UI "check pool"), see ServerPool.checkServers.
+     */
+    checkServers() {
+        return this.pool.checkServers(async url => {
+            const {result} = await rpcTransport(url, {probe: true})
+            return result && result.sequence || null
+        })
     }
 }
 
 let instance = null
-if (config.sorobanRpcUrl) {
-    instance = new SorobanRpcClient(config.sorobanRpcUrl)
-    logger.info(`Using Soroban RPC ${config.sorobanRpcUrl}`)
+const urls = poolUrls(config.sorobanRpcUrl, config.sorobanRpcPool)
+if (urls.length) {
+    instance = new SorobanRpcClient(new ServerPool({
+        urls,
+        name: 'Soroban RPC',
+        transport: rpcTransport,
+        failover: getFailoverOptions()
+    }))
+    logger.info(`Using Soroban RPC pool: ${urls.map(sanitizeUrlForLogs).join(', ')}`)
 } else {
     logger.info('Soroban RPC not configured — Soroban meta decoding disabled.')
 }
 
-module.exports = instance
+/**
+ * `client` is null when Soroban RPC is not configured (`sorobanRpcUrl` / `sorobanRpcPool` empty).
+ */
+module.exports = {client: instance, SorobanRpcClient, rpcTransport}

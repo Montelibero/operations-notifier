@@ -148,6 +148,49 @@ Env parameter: `NETWORK_PASSPHRASE`
 Allow insecure HTTP Horizon URLs (use for local mocks).\
 Default value: `false`.\
 Env parameter: `HORIZON_ALLOW_HTTP`
+- **horizonPool**\
+List of Horizon server URLs for failover, the first one is preferred (see
+[Server pools and failover](#server-pools-and-failover)). When empty, the pool
+consists of the single `horizon` URL.\
+Default value: `[]`.\
+Env parameter: `HORIZON_POOL` (comma-separated)
+- **sorobanRpcPool**\
+List of Soroban RPC server URLs for failover, the first one is preferred. When
+empty, the pool consists of the single `sorobanRpcUrl` (or nothing if it is empty).\
+Default value: `[]`.\
+Env parameter: `SOROBAN_RPC_POOL` (comma-separated)
+- **failoverRetries**\
+Attempts on the same server for temporary failures (5xx, network errors,
+timeouts) before the server is marked down and the next one is used.\
+Default value: `2`.\
+Env parameter: `FAILOVER_RETRIES`
+- **failoverRetryDelayMs**\
+Delay between those attempts.\
+Default value: `400`.\
+Env parameter: `FAILOVER_RETRY_DELAY_MS`
+- **failoverRequestTimeoutMs**\
+Hard timeout for a single Horizon / Soroban RPC request.\
+Default value: `15000`.\
+Env parameter: `FAILOVER_REQUEST_TIMEOUT_MS`
+- **failoverCooldownSeconds**\
+How long a failed server stays out of rotation (unless the background probe
+brings it back earlier).\
+Default value: `120`.\
+Env parameter: `FAILOVER_COOLDOWN_SECONDS`
+- **failoverProbeIntervalSeconds**\
+Interval of the recovery probe — it runs only while some server is down and
+targets only the down servers.\
+Default value: `60`.\
+Env parameter: `FAILOVER_PROBE_INTERVAL_SECONDS`
+- **failoverProbeSuccesses**\
+Consecutive successful probes needed to consider a server recovered.\
+Default value: `2`.\
+Env parameter: `FAILOVER_PROBE_SUCCESSES`
+- **horizonStallSeconds**\
+Silence of the ledger stream after which another pool server is asked for its
+latest ledger to detect a stuck Horizon (see below).\
+Default value: `20`.\
+Env parameter: `HORIZON_STALL_SECONDS`
 - **reactionResponseTimeout**\
 Maximum expected HTTP response timeout (in seconds). 
 If the reaction URL takes more time to respond, the request is aborted and
@@ -288,6 +331,48 @@ If you run a local Horizon mock over HTTP (e.g., `http://127.0.0.1:1234`), set:
 - `horizonAllowHttp: true` in `app.config.json`, or
 - `HORIZON_ALLOW_HTTP=true` in the environment.
 
+#### Server pools and failover
+
+Several identical Horizon servers (and several Soroban RPC servers) can be
+configured as a pool. The first URL is preferred; the service switches between
+them automatically:
+
+| Event | Action |
+|---|---|
+| `429` | fail over immediately; the server is skipped until `Retry-After` / `X-RateLimit-Reset` (or the cooldown) |
+| `5xx`, network error, timeout | `failoverRetries` attempts on the same server, then it is marked down and the next server is used |
+| `404` for a ledger that just closed | the server is behind: the request is repeated on the next server, the server itself is not marked down |
+| other `4xx` | the request is wrong — no failover, the error is handled as before |
+| every server failed | the watcher recovery backoff (1 → 60 s) as before, servers are probed in the background |
+
+When a failed server is marked down, the pool starts probing it (and only the
+down servers) every `failoverProbeIntervalSeconds`; after
+`failoverProbeSuccesses` successful probes the server is back and the pool
+switches to the preferred server automatically. As a safety net a down server
+becomes eligible again after `failoverCooldownSeconds` even without a probe.
+
+The ledger stream (SSE) follows the active server: on every switch the stream
+is restarted on the new server (with a 15 s grace period against flapping).
+When no ledger arrives for `horizonStallSeconds`, the stall check asks both the
+streaming server (over REST) and a peer server for their latest ledgers:
+
+- the server is 2+ ledgers behind its peer → it stopped ingesting: marked down,
+  the stream moves to the next server;
+- the server does not answer REST either → marked down, the stream moves on;
+- the server has ingested ledgers the stream never delivered → the SSE
+  connection is stuck: the stream is restarted on the same server;
+- nothing new anywhere → the network is slow, nothing is switched.
+
+If the whole pool is unavailable or rate limited while a ledger is being
+loaded, the ledger is retried (up to 10 times, waiting for the rate-limit
+reset) instead of being dropped; the catch-up cursor is dropped only when
+Horizon rejects the cursor itself, never on temporary failures.
+
+Pool state is exposed in `GET /health` (`servers`), in `GET /api/status`
+(`stream.horizon`, `stream.sorobanRpc`) and in the admin UI ("Проверить пул"
+button runs an on-demand check of every server: latest ledger, lag, response
+time) via `GET /api/status/pool-check` (admin token required).
+
 ## API
 
 ### Authentication
@@ -329,14 +414,19 @@ Admin requests can use `Authorization: <ADMIN_AUTHENTICATION_TOKEN>` in any mode
   - `lostNotifications` — sum of consecutive lost notifications across active subscriptions.
   - `lastIngestedTx` — paging token of the last processed transaction.
   - `stream` — stream status (last ledger, last tx hash/paging token, queue length, reconnect delay).
+  - `stream.horizon`, `stream.sorobanRpc` — pool status: active server and per-server
+    counters/state (see [Server pools and failover](#server-pools-and-failover)).
   - `notifier` — notifier status (in-flight notifications).
+- `GET /api/status/pool-check` — admin only: on-demand check of every Horizon and
+  Soroban RPC server (latest ledger, lag, response time, error).
 
 ### Healthcheck
 
 - `GET /health` — strict liveness/readiness endpoint for container orchestration
   and external watchdogs.
 - Returns `200` with `{"status":"ok"}` when the API is up and transaction
-  ingestion is making progress.
+  ingestion is making progress. The response also carries `servers` with the
+  currently active Horizon / Soroban RPC server URLs.
 - Returns `503` with `{"status":"unhealthy","reason":"watcher_stalled"}` when
   the watcher is no longer ingesting data, even if the HTTP process itself is
   still running.
@@ -362,7 +452,15 @@ Admin requests can use `Authorization: <ADMIN_AUTHENTICATION_TOKEN>` in any mode
     "lastTxHash": "abcdef...",
     "queueLength": 0,
     "processing": false,
-    "reconnectDelay": 1000
+    "reconnectDelay": 1000,
+    "horizon": {
+      "active": "https://horizon.example.com",
+      "lastSwitchAt": null,
+      "servers": [
+        {"url": "https://horizon.example.com", "active": true, "state": "ok", "requests": 1234, "failures": 0}
+      ]
+    },
+    "sorobanRpc": null
   },
   "notifier": {
     "inProgress": 1
@@ -694,6 +792,8 @@ Your token is stored securely in the browser's local storage for future sessions
 ### Admin UI Features
 
 - System status monitoring (uptime, subscriptions count, ledger status)
+- Server pools: live pool state and an on-demand check of every Horizon / Soroban
+  RPC server (latest ledger, lag, response time)
 - Create, view and delete subscriptions
 - Real-time API logs
 - Automatic server address detection
@@ -825,7 +925,9 @@ Configure the RPC endpoint via `sorobanRpcUrl` in `app.config.json` or the
 `SOROBAN_RPC_URL` environment variable. Default is
 `https://mainnet.sorobanrpc.com`. Set it to an empty string to disable Soroban
 meta decoding entirely — contract/function_name/args are still populated
-since they come from the transaction envelope.
+since they come from the transaction envelope. Several RPC servers can be
+listed in `sorobanRpcPool` / `SOROBAN_RPC_POOL` for failover with the same
+rules as the Horizon pool.
 
 Request headers:
 

@@ -417,6 +417,30 @@
                             <div class="kv-row"><span class="kv-key">Last Tx</span><span class="kv-val text-truncate" style="max-width: 200px">{{ statusData.stream.lastTxHash }}</span></div>
                             <div class="kv-row"><span class="kv-key">Queue</span><span class="kv-val">{{ statusData.stream.queueLength ?? 0 }}</span></div>
                         </div>
+
+                        <h6 class="text-muted text-uppercase small fw-bold mt-4 mb-3 d-flex align-items-center">
+                            <span class="me-auto">Servers</span>
+                            <button class="btn btn-outline-primary btn-sm" :disabled="poolChecking" @click="checkPool">
+                                <span v-if="poolChecking" class="spinner-border spinner-border-sm me-1"></span>Проверить пул
+                            </button>
+                        </h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm mb-0">
+                                <thead><tr><th>Pool</th><th>Server</th><th>State</th><th>Ledger</th><th>Lag</th><th>ms</th><th>Error</th></tr></thead>
+                                <tbody>
+                                    <tr v-for="row in poolRows" :key="row.pool + row.url">
+                                        <td>{{ row.pool }}</td>
+                                        <td class="text-truncate" style="max-width: 220px" :title="row.url">{{ row.url }} <span v-if="row.active" class="badge bg-primary">active</span></td>
+                                        <td :class="stateColor(row.state)">{{ row.state }}</td>
+                                        <td>{{ row.latestLedger ?? '—' }}</td>
+                                        <td :class="row.lag > 1 ? 'text-danger' : ''">{{ row.lag ?? '—' }}</td>
+                                        <td>{{ row.responseMs ?? '—' }}</td>
+                                        <td class="text-truncate text-danger" style="max-width: 200px" :title="row.error">{{ row.error ?? '' }}</td>
+                                    </tr>
+                                    <tr v-if="!poolRows.length"><td colspan="7" class="text-muted">No servers configured</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                     <div v-else class="text-center py-4">
                         <span class="spinner-border spinner-border-sm"></span> Loading...
@@ -450,7 +474,7 @@
 </div> <!-- End of #app -->
 
 <script>
-    const { createApp, ref, reactive, onMounted, nextTick } = Vue;
+    const { createApp, ref, reactive, computed, onMounted, nextTick } = Vue;
 
     createApp({
         setup() {
@@ -471,6 +495,8 @@
             const showConfig = ref(false);
             const showStatusModal = ref(false);
             const statusData = ref(null);
+            const poolCheck = ref(null);
+            const poolChecking = ref(false);
 
             const minConsole = ref(false);
             const logs = ref([]);
@@ -589,6 +615,7 @@
             const checkStatus = async () => {
                 showStatusModal.value = true;
                 statusData.value = null; // Reset for spinner
+                poolCheck.value = null;
                 const data = await request(config.routes.status);
                 if (data) {
                     statusData.value = data;
@@ -596,6 +623,47 @@
                     showStatusModal.value = false; // Close on error
                 }
             };
+
+            // Pool servers shown in the status modal: the latest on-demand check when available, otherwise the live pool state
+            const poolRows = computed(() => {
+                const rows = []
+                const add = (pool, list, checked) => {
+                    for (const r of list || []) {
+                        rows.push({
+                            pool,
+                            url: r.url,
+                            active: r.active,
+                            state: r.state,
+                            latestLedger: r.latestLedger ?? null,
+                            lag: r.lag ?? null,
+                            responseMs: r.responseMs ?? r.lastResponseMs ?? null,
+                            error: r.error ?? r.lastError ?? null,
+                            checked
+                        })
+                    }
+                }
+                const checked = poolCheck.value
+                if (checked) {
+                    add('Horizon', checked.horizon, true)
+                    add('Soroban RPC', checked.sorobanRpc, true)
+                } else if (statusData.value) {
+                    add('Horizon', statusData.value.stream?.horizon?.servers, false)
+                    add('Soroban RPC', statusData.value.stream?.sorobanRpc?.servers, false)
+                }
+                return rows
+            });
+
+            // On-demand check of every Horizon / Soroban RPC server of the failover pools
+            const checkPool = async () => {
+                poolChecking.value = true;
+                const data = await request('/api/status/pool-check');
+                if (data) {
+                    poolCheck.value = data;
+                }
+                poolChecking.value = false;
+            };
+
+            const stateColor = (state) => state === 'ok' ? 'text-success' : (state === 'rate_limited' ? 'text-warning' : 'text-danger');
 
             const getSubscriptions = async () => {
                 const data = await request(config.routes.subscriptions);
@@ -640,7 +708,7 @@
             return {
                 config, loading, isConnected, showConfig, minConsole, logs, consoleBody,
                 subscriptions, newSub, expandedSub, expandedDelivery, deliveryLog,
-                showStatusModal, statusData, checkStatus,
+                showStatusModal, statusData, checkStatus, poolCheck, poolChecking, checkPool, stateColor, poolRows,
                 saveConfig, createSubscription, deleteSubscription, getSubscriptions,
                 getDeliveryLog, toggleDeliveryDetails, formatTime,
                 shortStr, getMethodColor, toggleDetails

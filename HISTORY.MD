@@ -1,3 +1,23 @@
+0.11.0 / 2026-11-26
+==================
+
+* Server pools with automatic failover for Horizon (`horizonPool` / `HORIZON_POOL`) and
+  Soroban RPC (`sorobanRpcPool` / `SOROBAN_RPC_POOL`): 429 skips the server until its rate
+  limit resets, 5xx/network/timeout fail over after `failoverRetries` attempts, 404 for a
+  freshly closed ledger is treated as a lagging server and retried on the next one.
+  Down servers are probed in the background and the pool returns to the preferred server
+  automatically. Horizon REST requests now go through a `fetch` client with a hard timeout
+  (`failoverRequestTimeoutMs`) instead of the SDK call builders.
+* Ledger stream follows the active server (restarted on every switch with a 15 s grace
+  period); a server that stops ingesting is detected by the stall check
+  (`horizonStallSeconds`, including the cold start) and comparing its ledger height with the peers.
+* When the whole pool is unavailable or rate limited, a ledger is retried (up to 10 times,
+  waiting for the rate-limit reset) instead of being dropped; the catch-up cursor is dropped
+  only when Horizon rejects the cursor itself (400 with a problem+json detail), never on
+  temporary failures.
+* `/health` reports the active servers, `/api/status` reports pool state, admin UI gets a
+  "Проверить пул" button backed by `GET /api/status/pool-check` (admin token).
+
 0.10.0 / 2026-11-25
 ==================
 

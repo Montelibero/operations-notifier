@@ -1,38 +1,14 @@
 const config = require('../models/config'),
-    {horizon} = require('./stellar-connector'),
+    stellarConnector = require('./stellar-connector'),
+    {horizonPool} = stellarConnector,
     {parseTransaction} = require('./stream-processor'),
     sorobanRpc = require('./soroban-rpc-client'),
     {decodeMeta} = require('../util/soroban-helper'),
     storage = require('./storage'),
-    logger = require('../util/logger')
+    logger = require('../util/logger'),
+    {sanitizeUrlForLogs} = require('../util/log-redaction')
 
 const transactionsBatchSize = 200
-
-/**
- * Get header value case-insensitively
- * @param {Object} headers - HTTP headers object
- * @param {string} name - Header name to find
- * @returns {string|undefined} Header value or undefined
- */
-function getHeader(headers, name) {
-    if (!headers) return undefined
-    // Try exact match first
-    if (headers[name] !== undefined) return headers[name]
-    // Try lowercase (axios normalizes to lowercase)
-    const lower = name.toLowerCase()
-    if (headers[lower] !== undefined) return headers[lower]
-    // Try uppercase
-    const upper = name.toUpperCase()
-    if (headers[upper] !== undefined) return headers[upper]
-    // Search through all keys case-insensitively
-    const lowerName = name.toLowerCase()
-    for (const key of Object.keys(headers)) {
-        if (key.toLowerCase() === lowerName) {
-            return headers[key]
-        }
-    }
-    return undefined
-}
 
 function getNumericConfigValue(value, fallback) {
     if (value === undefined || value === null || value === '') return fallback
@@ -41,12 +17,7 @@ function getNumericConfigValue(value, fallback) {
 }
 
 function fetchTransactions(cursor, ledgerSequence = undefined, watcher = null) {
-    let builder = horizon
-        .transactions()
-
-    if (ledgerSequence !== undefined) {
-        builder = builder.forLedger(ledgerSequence)
-    }
+    const params = new URLSearchParams({order: 'asc', limit: String(transactionsBatchSize)})
 
     if (cursor !== undefined && cursor !== null) {
         try {
@@ -55,36 +26,38 @@ function fetchTransactions(cursor, ledgerSequence = undefined, watcher = null) {
             if (cursorStr && cursorStr !== 'undefined' && cursorStr !== 'null') {
                 // Validate by parsing as BigInt
                 BigInt(cursorStr)
-                builder = builder.cursor(cursorStr)
+                params.set('cursor', cursorStr)
             } else {
-                // Если курсор невалидный, не используем его
                 cursor = undefined
             }
         } catch (err) {
-            // Если ошибка при обработке курсора, не используем его
-            console.error(`Error with cursor, using default: ${err.message}`)
             cursor = undefined
+            console.error(`Error with cursor, using default: ${err.message}`)
         }
     }
 
-    builder = builder.order('asc').limit(transactionsBatchSize)
+    // per-ledger fetches use the ledger sub-resource: `/transactions?ledger=` is NOT a valid filter
+    // (Horizon silently ignores it and returns the whole transaction history from the beginning)
+    const resource = ledgerSequence !== undefined ? `/ledgers/${ledgerSequence}/transactions` : '/transactions'
+    const path = `${resource}?${params.toString()}`
     const start = Date.now()
 
-    return builder.call()
+    return horizonPool.call({path, ledger: ledgerSequence})
         .then(result => {
-            const recordCount = result.records?.length || 0;
+            const records = result.records || []
+            const recordCount = records.length
             if (recordCount > 50 || start === 0) {
                 if (ledgerSequence) {
                     logger.info(`Fetched ${recordCount} txs from ledger ${ledgerSequence}`)
                 } else if (cursor && recordCount === transactionsBatchSize && watcher) {
-                    const lastTx = result.records[recordCount - 1]
-                    const ledger = lastTx.ledger_attr || '?'
+                    const lastTx = records[recordCount - 1]
+                    const ledger = lastTx.ledger ?? '?'
                     // Update lastLedgerSeen if we see a newer ledger
-                    if (typeof lastTx.ledger_attr === 'number' && lastTx.ledger_attr > (watcher.lastLedgerSeen || 0)) {
-                        watcher.lastLedgerSeen = lastTx.ledger_attr
+                    if (typeof lastTx.ledger === 'number' && lastTx.ledger > (watcher.lastLedgerSeen || 0)) {
+                        watcher.lastLedgerSeen = lastTx.ledger
                     }
-                    const lag = (typeof watcher.lastLedgerSeen === 'number' && typeof lastTx.ledger_attr === 'number')
-                        ? watcher.lastLedgerSeen - lastTx.ledger_attr
+                    const lag = (typeof watcher.lastLedgerSeen === 'number' && typeof lastTx.ledger === 'number')
+                        ? watcher.lastLedgerSeen - lastTx.ledger
                         : '?'
                     const queue = watcher.queue ? watcher.queue.length : 0
                     logger.info(`Fetched ${recordCount} txs (ledger ${ledger}, lag ${lag}, queue ${queue})`)
@@ -92,7 +65,7 @@ function fetchTransactions(cursor, ledgerSequence = undefined, watcher = null) {
                     logger.info(`Fetched ${recordCount} txs`)
                 }
             }
-            return result
+            return {...result, records}
         })
         .catch(err => {
             console.error(`Fetch error: ${err.message}`)
@@ -129,6 +102,14 @@ class TransactionWatcher {
         this.lastErrorAt = null
         this.lastErrorMessage = null
         this.recoveryTimer = null
+        this.streamUrl = null
+        this.lastStreamStartAt = 0
+        this.streamRestartTimer = null
+        this.streamGraceMs = 15000
+        this.stallTimer = null
+        this.stallCheckInProgress = false
+        this.lastSlowNetworkLogAt = 0
+        this.onPoolSwitchHandler = event => this.onPoolSwitch(event)
     }
 
     markFetchSuccess() {
@@ -252,7 +233,7 @@ class TransactionWatcher {
                 return resolve()
             }
 
-            const txLedger = rawTx && rawTx.ledger_attr
+            const txLedger = rawTx && rawTx.ledger
             if (typeof this.lastLedgerSeen === 'number' && typeof txLedger === 'number') {
                 const lag = this.lastLedgerSeen - txLedger
                 if (lag > 20) {
@@ -340,12 +321,12 @@ class TransactionWatcher {
      * @param {Array} notifications - notifications to be sent
      */
     async _enrichSorobanOps(tx, notifications) {
-        if (!sorobanRpc || !notifications.length) return
+        if (!sorobanRpc.client || !notifications.length) return
         const sorobanNotifications = notifications.filter(n => n.payload && n.payload.type_i === 24)
         if (!sorobanNotifications.length) return
         const txHash = tx.details.hash
         try {
-            const result = await sorobanRpc.getTransaction(txHash)
+            const result = await sorobanRpc.client.getTransaction(txHash)
             if (!result || !result.resultMetaXdr) return
             for (const n of sorobanNotifications) {
                 const opIndex = typeof n.payload.application_order === 'number' ? n.payload.application_order : 0
@@ -402,17 +383,22 @@ class TransactionWatcher {
             this.recoveryTimer = null
         }
         if (this.releaseStream) return
+        if (!this.poolSwitchSubscribed) {
+            // follow the active server; re-subscribed on the next watch() after a full stop
+            horizonPool.on('switch', this.onPoolSwitchHandler)
+            this.poolSwitchSubscribed = true
+        }
         this.state = 'starting'
         if (!this.startedAt) {
             this.startedAt = new Date()
         }
 
         // Fetch current ledger for lag calculation during catch-up
-        horizon.ledgers().order('desc').limit(1).call()
-            .then(({records}) => {
-                if (records && records[0]) {
-                    this.lastLedgerSeen = records[0].sequence
-                    logger.info(`Current network ledger: ${this.lastLedgerSeen}`)
+        stellarConnector.fetchLatestLedger()
+            .then(sequence => {
+                if (sequence) {
+                    this.lastLedgerSeen = sequence
+                    logger.info(`Current network ledger: ${sequence}`)
                 }
             })
             .catch(() => {}) // non-critical
@@ -499,7 +485,7 @@ class TransactionWatcher {
                             const prevCursor = this.cursor
                             this.lastTxPagingToken = lastTx.paging_token
                             this.lastTxHash = lastTx.hash
-                            this.lastLedger = lastTx.ledger_attr
+                            this.lastLedger = lastTx.ledger
                             
                             // Обновляем курсор только если новый токен больше текущего
                             this.cursor = lastTx.paging_token
@@ -528,30 +514,16 @@ class TransactionWatcher {
                 }
             })
             .catch(err => {
-                const delay = this.getRateLimitDelay(err)
-                if (delay !== null) {
-                    this.reconnectDelay = delay
-                    logger.debug(`Rate limit hit, retrying in ${delay}ms`)
-                    return setTimeout(() => this.trackTransactions(), delay)
-                }
-                console.error(`[DEBUG] Error in trackTransactions: ${err.message}`)
-                // Если проблема с курсором, попробуем перейти на живой стрим
-                if (err.message && (
-                    err.message.includes('cursor') || 
-                    err.message.includes('paging') || 
-                    err.message.includes('token')
-                )) {
-                    logger.debug('Cursor error detected, switching to live stream')
+                // the pool has already failed over across all servers and retried; schedule a recovery
+                console.error(`Error in trackTransactions: ${err.message}`)
+                // A rejected cursor (Horizon answers 400 with a problem+json detail mentioning it) is the only
+                // reason to drop the catch-up cursor; temporary failures (5xx, timeouts, all servers down)
+                // must keep the cursor and go through the regular recovery.
+                const problem = `${err.title || ''} ${err.detail || ''}`
+                if (err.type === 'fatal' && /cursor|paging|token|invalid|not found/i.test(problem)) {
+                    logger.warn(`Cursor rejected by Horizon (${problem.trim()}), switching to live stream`)
                     this.cursor = null
                     this.trackLiveStream()
-                    return
-                }
-                const status = err && err.response && err.response.status
-                const isRecoverable = status === 502 || status === 503 || status === 504 ||
-                    (err.message && /service unavailable|timeout|temporar/i.test(err.message))
-                if (isRecoverable) {
-                    const retryDelay = this.getBackoffDelay(1000)
-                    this.scheduleRecovery(err.message || `status ${status}`, retryDelay)
                     return
                 }
                 this.scheduleRecovery(err.message || 'trackTransactions failed', this.getBackoffDelay(1000))
@@ -575,23 +547,21 @@ class TransactionWatcher {
     /**
      * Track live transactions stream from the Horizon server
      */
-    trackLiveStream() {
-        // Если мы уже стримим, не начинаем повторно
-        if (this.streaming && this.releaseStream) {
+    trackLiveStream(force = false) {
+        if (!force && this.streaming && this.releaseStream) {
             logger.info('Already streaming ledgers, skipping restart')
             return
         }
-        
-        // Останавливаем текущий стрим, если он есть
-        if (this.releaseStream) {
-            this.releaseStream()
-            this.releaseStream = null
-        }
-        
+
+        this.stopStream()
+
         this.streaming = true
         this.state = 'streaming'
-        logger.info('Starting ledger stream...')
-        this.releaseStream = horizon
+        const url = horizonPool.activeUrl || horizonPool.fallbackUrl
+        this.streamUrl = url
+        this.lastStreamStartAt = Date.now()
+        logger.info(`Starting ledger stream from ${sanitizeUrlForLogs(url)}...`)
+        this.releaseStream = stellarConnector.getHorizonServer(url)
             .ledgers()
             .order('asc')
             .cursor('now')
@@ -607,36 +577,115 @@ class TransactionWatcher {
                 },
                 onerror: err => {
                     const status = err && (err.status || (err.response && err.response.status))
-                    const headers = err && err.response && err.response.headers
-                    const reset = getHeader(headers, 'X-RateLimit-Reset')
-                    if (status === 429) {
-                        const resetValue = parseInt(reset)
-                        this.reconnectDelay = (!isNaN(resetValue) && resetValue > 0 ? resetValue : 10) * 1000
-                        logger.warn(`Ledger stream error (status 429). Waiting ${this.reconnectDelay / 1000}s before reconnect.`)
-                    }
-                    else {
-                        const detail = status ? `status ${status}` : (err && err.message ? err.message : 'unknown error')
-                        this.reconnectDelay = this.getBackoffDelay(1000)
-                        logger.warn(`Ledger stream error (${detail}). Reconnecting in ${this.reconnectDelay / 1000}s...`)
-                    }
-                    this.scheduleRecovery(status ? `status ${status}` : (err && err.message ? err.message : 'unknown error'), this.reconnectDelay)
+                    const detail = status ? `status ${status}` : (err && err.message ? err.message : 'unknown error')
+                    // let the pool know the streaming server misbehaves, so the reconnect goes to the next one
+                    const failure = {message: detail}
+                    if (status === 429 || /429/.test(detail)) failure.type = 'rate_limited'
+                    else if (/non-200|status 5\d\d|ECONN|ETIMEDOUT|timeout|fetch failed/i.test(detail)) failure.type = 'retry'
+                    if (failure.type) horizonPool.reportStreamFailure(url, failure)
+                    this.reconnectDelay = this.getBackoffDelay(1000)
+                    logger.warn(`Ledger stream error from ${sanitizeUrlForLogs(url)} (${detail}). Reconnecting in ${this.reconnectDelay / 1000}s...`)
+                    this.scheduleRecovery(`stream ${detail}`, this.reconnectDelay)
                 }
             })
+        this.startStallCheck()
     }
 
-    getRateLimitDelay(err) {
-        if (!err || !err.response || err.response.status !== 429) return null
-        const headers = err.response.headers || {}
-        const resetHeader = getHeader(headers, 'X-RateLimit-Reset')
-        const reset = parseInt(resetHeader)
-        const delaySeconds = !isNaN(reset) && reset > 0 ? reset : 10
-        logger.warn(`Horizon rate limit reached. Retrying in ${delaySeconds} seconds.`)
-        return delaySeconds * 1000
+    stopStream() {
+        if (this.releaseStream) {
+            this.releaseStream()
+            this.releaseStream = null
+        }
+        this.stopStallCheck()
+        if (this.streamRestartTimer) {
+            clearTimeout(this.streamRestartTimer)
+            this.streamRestartTimer = null
+        }
+    }
+
+    /**
+     * The pool switched the active server — move the ledger stream there (with a grace period against flapping).
+     * @param {{from: string, to: string, reason: string}} event
+     */
+    onPoolSwitch(event) {
+        if (!this.streaming) return // REST requests follow the pool automatically
+        const elapsed = Date.now() - (this.lastStreamStartAt || 0)
+        const delay = Math.max(0, this.streamGraceMs - elapsed)
+        if (this.streamRestartTimer) return
+        this.streamRestartTimer = setTimeout(() => {
+            this.streamRestartTimer = null
+            if (!this.streaming) return
+            logger.info(`Active Horizon server changed (${event.reason}), restarting the ledger stream on ${sanitizeUrlForLogs(event.to || horizonPool.fallbackUrl)}`)
+            this.trackLiveStream(true)
+        }, delay)
+        if (this.streamRestartTimer.unref) this.streamRestartTimer.unref()
+    }
+
+    startStallCheck() {
+        this.stopStallCheck()
+        this.stallTimer = setInterval(() => this.checkStreamStall(), 5000)
+        if (this.stallTimer.unref) this.stallTimer.unref()
+    }
+
+    stopStallCheck() {
+        if (this.stallTimer) {
+            clearInterval(this.stallTimer)
+            this.stallTimer = null
+        }
+    }
+
+    /**
+     * If the ledger stream is silent for longer than `horizonStallSeconds` (counted from the last ledger or,
+     * on a cold start, from the stream start), ask the streaming server for its latest ledger via REST and
+     * compare with a peer server:
+     * - the server is behind the peer by 2+ ledgers → it stopped ingesting: mark it down and switch;
+     * - the server does not answer REST either → it is down: mark it down and switch;
+     * - the server ingested ledgers that the stream never delivered → the SSE connection is stuck: restart it;
+     * - nothing new anywhere → the network is slow: log it (throttled).
+     */
+    async checkStreamStall() {
+        if (!this.streaming || !this.streamUrl) return
+        const lastActivityAt = this.lastLedgerSeenAt || this.lastStreamStartAt
+        if (!lastActivityAt) return
+        const stallMs = Date.now() - new Date(lastActivityAt).getTime()
+        if (stallMs < (config.horizonStallSeconds || 20) * 1000 || this.stallCheckInProgress) return
+        const stalledUrl = this.streamUrl
+        this.stallCheckInProgress = true
+        try {
+            const [peer, own] = await Promise.all([
+                stellarConnector.fetchPeerLatestLedger(stalledUrl),
+                stellarConnector.fetchLatestLedger(stalledUrl).catch(() => null)
+            ])
+            if (!this.streaming || this.streamUrl !== stalledUrl) return
+            // `own === null` means the server does not answer REST either — handled below regardless of peers
+            const seen = this.lastLedgerSeen || 0
+            const stalled = horizonPool.servers.find(server => server.url === stalledUrl)
+            const stalledFor = `${Math.round(stallMs / 1000)}s`
+            if (own === null) {
+                logger.warn(`Ledger stream from ${sanitizeUrlForLogs(stalledUrl)} stalled for ${stalledFor} and the server does not answer REST — switching`)
+                if (stalled) horizonPool.markDown(stalled, `stalled stream, REST timeout`) // emits switch → onPoolSwitch
+            } else if (peer && peer.ledger >= own + 2) {
+                logger.warn(`Ledger stream from ${sanitizeUrlForLogs(stalledUrl)} stalled for ${stalledFor}: ${sanitizeUrlForLogs(peer.url)} is at ledger ${peer.ledger} vs ${own} — switching`)
+                if (stalled) horizonPool.markBehind(stalled, own, peer.ledger) // emits switch → onPoolSwitch
+            } else if (own > seen) {
+                logger.warn(`Ledger stream from ${sanitizeUrlForLogs(stalledUrl)} stalled for ${stalledFor} while the server is at ledger ${own} (stream last saw ${seen}) — restarting the stream`)
+                this.trackLiveStream(true)
+            } else {
+                // nothing new on the streaming server either: the whole network is slow, say it once a minute at most
+                if (!this.lastSlowNetworkLogAt || Date.now() - this.lastSlowNetworkLogAt > 60000) {
+                    this.lastSlowNetworkLogAt = Date.now()
+                    logger.info(`Ledger stream from ${sanitizeUrlForLogs(stalledUrl)} silent for ${stalledFor}, the server itself is at ledger ${own} — network is slow, not switching`)
+                }
+            }
+        } finally {
+            this.stallCheckInProgress = false
+        }
     }
 
     loadLedgerTransactions(sequence, txCursor) {
         return new Promise((resolve, reject) => {
             let notFoundRetries = 0
+            let poolRetries = 0
             const fetchLedgerTxBatch = (cursor) => {
                 fetchTransactions(cursor, sequence)
                     .then(({records}) => {
@@ -655,7 +704,7 @@ class TransactionWatcher {
                         const lastTx = records[fetchedCount - 1]
                         this.lastTxPagingToken = lastTx.paging_token
                         this.lastTxHash = lastTx.hash
-                        this.lastLedgerProcessed = lastTx.ledger_attr
+                        this.lastLedgerProcessed = lastTx.ledger
                         this.markLedgerProcessed()
                         
                         // Принудительно обновляем курсор при обработке леджера
@@ -667,9 +716,9 @@ class TransactionWatcher {
                         storage.updateLastIngestedTx(lastTx.paging_token)
                             .catch(err => console.error(`Failed to update ledger cursor: ${err.message}`))
                         
-                        if (this.lastLedgerSeen === null && typeof lastTx.ledger_attr === 'number') {
-                            this.lastLedgerSeen = lastTx.ledger_attr
-                            this.lastLedger = lastTx.ledger_attr
+                        if (this.lastLedgerSeen === null && typeof lastTx.ledger === 'number') {
+                            this.lastLedgerSeen = lastTx.ledger
+                            this.lastLedger = lastTx.ledger
                         }
                         if (fetchedCount < transactionsBatchSize) {
                             logger.info(`Ledger ${sequence} processed (${txCount} transactions)`)
@@ -678,15 +727,20 @@ class TransactionWatcher {
                         fetchLedgerTxBatch(lastTx.paging_token)
                     })
                     .catch(e => {
-                        const delay = this.getRateLimitDelay(e)
-                        if (delay !== null) {
-                            this.reconnectDelay = delay
-                            return setTimeout(() => fetchLedgerTxBatch(cursor), delay)
-                        }
-                        const status = e && e.response && e.response.status
+                        // the pool already failed over and exhausted its same-server retries
+                        const status = e && e.status
                         if ((status === 404 || status === 502 || status === 503 || status === 504) && notFoundRetries < 5) {
+                            // a 404 here means no server has ingested the ledger yet
                             notFoundRetries++
                             return setTimeout(() => fetchLedgerTxBatch(cursor), 1000)
+                        }
+                        // every server is down or rate limited: wait and retry rather than drop the ledger
+                        if ((e.type === 'retry' || e.type === 'rate_limited') && poolRetries < 10) {
+                            poolRetries++
+                            const resetIn = e.type === 'rate_limited' && e.resetAt ? e.resetAt - Date.now() : 0
+                            const delay = Math.min(60000, Math.max(1000, resetIn, poolRetries * 2000))
+                            logger.warn(`Ledger ${sequence}: Horizon pool unavailable (${e.message}), retrying in ${Math.round(delay / 1000)}s`)
+                            return setTimeout(() => fetchLedgerTxBatch(cursor), delay)
                         }
                         reject(e)
                     })
@@ -701,13 +755,17 @@ class TransactionWatcher {
     stopWatching() {
         this.streaming = false
         this.state = this.observer.observing ? 'stopped' : 'idle'
-        if (this.releaseStream) {
-            this.releaseStream()
-            this.releaseStream = null
-        }
-        if (arguments[0] !== true && this.recoveryTimer) {
-            clearTimeout(this.recoveryTimer)
-            this.recoveryTimer = null
+        this.stopStream()
+        if (arguments[0] !== true) {
+            // full stop (not a recovery restart): stop following the pool as well
+            if (this.poolSwitchSubscribed) {
+                horizonPool.off('switch', this.onPoolSwitchHandler)
+                this.poolSwitchSubscribed = false
+            }
+            if (this.recoveryTimer) {
+                clearTimeout(this.recoveryTimer)
+                this.recoveryTimer = null
+            }
         }
     }
 
@@ -792,9 +850,12 @@ class TransactionWatcher {
             lastRecoveryAttemptAt: this.lastRecoveryAttemptAt,
             lastErrorAt: this.lastErrorAt,
             lastErrorMessage: this.lastErrorMessage,
+            horizon: horizonPool.getStatus(),
+            sorobanRpc: sorobanRpc.client ? sorobanRpc.client.getStatus() : null,
             healthy: this.getHealth().healthy
         }
     }
 }
 
 module.exports = TransactionWatcher
+module.exports.fetchTransactions = fetchTransactions
