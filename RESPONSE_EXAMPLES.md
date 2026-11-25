@@ -574,18 +574,12 @@ the notifier sums `amount_bought` only for trades whose `asset_bought` matches
     "amount": "0.1000000",
     "claimants": [
       {
-        "_destination": "GAELGDUWX23EHWX4EDFGLS4XNUO2WSWHSXMKWMN3DOW5OI5BYTT5CG5Z",
-        "_predicate": {
-          "_switch": { "name": "claimPredicateBeforeRelativeTime", "value": 5 },
-          "_arm": "relBefore",
-          "_value": { "_value": "86400" }
-        }
+        "destination": "GAELGDUWX23EHWX4EDFGLS4XNUO2WSWHSXMKWMN3DOW5OI5BYTT5CG5Z",
+        "predicate": { "before_relative_time": "86400" }
       },
       {
-        "_destination": "GAF4SOS6CMSY3NETECFSUQMGGZ6TXFEIQ2XPG64AKMWWGUYVNFSL7AFK",
-        "_predicate": {
-          "_switch": { "name": "claimPredicateUnconditional", "value": 0 }
-        }
+        "destination": "GAF4SOS6CMSY3NETECFSUQMGGZ6TXFEIQ2XPG64AKMWWGUYVNFSL7AFK",
+        "predicate": "unconditional"
       }
     ],
     "id": "261832536488128513",
@@ -693,7 +687,38 @@ the notifier sums `amount_bought` only for trades whose `asset_bought` matches
 
 ## 18 | revoke_sponsorship
 
-*Пример недоступен - редко используемая операция*
+SDK отдаёт семь отдельных типов операции (`revokeAccountSponsorship`,
+`revokeTrustlineSponsorship`, `revokeOfferSponsorship`, `revokeDataSponsorship`,
+`revokeClaimableBalanceSponsorship`, `revokeLiquidityPoolSponsorship`,
+`revokeSignerSponsorship`); все они нормализуются в `revoke_sponsorship` с
+полем `revoke_type` и полями соответствующего типа:
+
+| `revoke_type` | дополнительные поля |
+|---|---|
+| `account` | `account` |
+| `trustline` | `account`, `asset` |
+| `offer` | `account` (продавец), `offer_id` |
+| `data` | `account`, `data_name` |
+| `claimable_balance` | `balance_id` |
+| `liquidity_pool` | `liquidity_pool_id` |
+| `signer` | `account`, `signer_key` |
+
+```json
+{
+  "operation": {
+    "type": "revoke_sponsorship",
+    "type_i": 18,
+    "id": "266797664711667713",
+    "account": "GBYH3M3REQM3WQOJY26FYORN23EXY22FWBHVZ74TT5GYOF22IIA7YSOX",
+    "revoke_type": "trustline",
+    "asset": {
+      "asset_type": 1,
+      "asset_code": "EURMTL",
+      "asset_issuer": "GACKTN5DAZGWXRWB2WLM6OPBDHAMT6SJNGLJZPQMEZBUR4JUGBX2UK7V"
+    }
+  }
+}
+```
 
 ---
 
@@ -852,7 +877,7 @@ the notifier sums `amount_bought` only for trades whose `asset_bought` matches
 - `host_function_type` — `invoke_contract`, `create_contract` или `upload_wasm`
 - `contract` — адрес вызываемого контракта (только для `invoke_contract`)
 - `function_name` — имя метода
-- `args` — аргументы, декодированные через `scValToNative`. Значения `i128/u128/i64/u64` отдаются **строкой** (JSON не может хранить bigint), буферы — base64
+- `args` — аргументы, декодированные через `scValToNative`. Значения `i128/u128/i64/u64` отдаются **строкой** (JSON не может хранить bigint), буферы — base64, адреса — strkey: `G…` (аккаунт), `C…` (контракт), `M…` (muxed-аккаунт, CAP-67), `W…` (muxed-контракт, Protocol 30 / CAP-84)
 - `events` — события контрактов (из Soroban RPC, если `sorobanRpcUrl` настроен и операция матчит подписку). **Не фильтруются по `operation.contract`** — сюда попадают в том числе события от SAC-контрактов токенов, переведённых внутри вызова. Каждое событие: `{contract, type, topics, data}`
 - `return_value` — декодированное возвращаемое значение
 
@@ -911,6 +936,45 @@ the notifier sums `amount_bought` only for trades whose `asset_bought` matches
 контракта от трансферов SAC.
 
 ---
+
+Пример `transfer` в Stellar Asset Contract на muxed-адрес контракта `W…`
+(Protocol 30): в `args` попадает сам `W…`-адрес, а в событии `transfer` топик
+`to` — обычный `C…`, и идентификатор мультиплексирования выносится в
+`data.to_muxed_id`. Так делает только SAC (по CAP-84); произвольный контракт
+может положить `W…` прямо в `topics`/`data` — тогда там будет декодированный
+strkey `W…` как есть:
+
+```json
+{
+  "operation": {
+    "type": "invoke_host_function",
+    "type_i": 24,
+    "host_function_type": "invoke_contract",
+    "contract": "CDUYP3U6HGTOBUNQD2WTLWNMNADWMENROKZZIHGEVGKIU3ZUDF42CDOK",
+    "function_name": "transfer",
+    "args": [
+      "WADQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOAAAAAAAOW6NCWUZE",
+      "10000000"
+    ],
+    "events": [
+      {
+        "type": "contract",
+        "contract": "CDUYP3U6HGTOBUNQD2WTLWNMNADWMENROKZZIHGEVGKIU3ZUDF42CDOK",
+        "topics": [
+          "transfer",
+          "GBYH3M3REQM3WQOJY26FYORN23EXY22FWBHVZ74TT5GYOF22IIA7YSOX",
+          "CADQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQP5KR"
+        ],
+        "data": {
+          "amount": "10000000",
+          "to_muxed_id": "123456789"
+        }
+      }
+    ],
+    "return_value": true
+  }
+}
+```
 
 ## 25 | extend_footprint_ttl
 

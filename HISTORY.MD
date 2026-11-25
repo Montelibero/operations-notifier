@@ -1,3 +1,28 @@
+0.10.0 / 2026-11-25
+==================
+
+* Upgrade `@stellar/stellar-sdk` to `17.4.0` (Protocol 30 / "Bell"): the bundled XDR
+  now knows muxed contract addresses (CAP-84), ML-DSA cost types (CAP-87) and
+  millisecond close times (CAP-88). With the previous 16.3.0 any transaction carrying
+  a `W…` address in `invoke_host_function` arguments failed to decode with
+  `XDR Read Error: unknown ScAddressType member for value 5` and the **whole
+  transaction was silently dropped**.
+* `invoke_host_function` args: muxed contract addresses are decoded as `W…` strkeys
+  (muxed accounts as `M…`). SAC `transfer` events to `W…` carry the multiplexing id
+  in `data.to_muxed_id` (previously the whole `args` array became `null`).
+* Fix: `revoke_sponsorship` operations were never normalized (the SDK exposes seven
+  distinct operation types) and were dropped as "unsupported". All seven are now
+  normalized to `revoke_sponsorship` with a `revoke_type` discriminator.
+* Fix: `extend_footprint_ttl` operations were never normalized (the SDK type string is
+  `extendFootprintTtl`) and were dropped as "unsupported".
+* Fix: `set_options.signer_key` was always `undefined` (the SDK exposes the signer as
+  `{weight, ed25519PublicKey | sha256Hash | preAuthTx | ed25519SignedPayload}`).
+* `create_claimable_balance.claimants` are normalized to a stable shape:
+  `{destination, predicate}` where `predicate` is `"unconditional"` or
+  `{and|or|not|before_absolute_time|before_relative_time}` (previously raw SDK
+  private fields leaked into the payload).
+* Requires Node.js >= 22.12 (stellar-sdk v17 CommonJS build relies on `require(esm)`).
+
 0.9.3 / 2026-09-10
 ==================
 

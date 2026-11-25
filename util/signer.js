@@ -11,14 +11,6 @@ function processSigningData(dataToSign) {
     return dataToSign
 }
 
-function deserializeSignature(signature) {
-    let res = new Uint8Array()
-    for (let i = 0; i += 2; i < signature.length) {
-        res.push(parseInt(signature.substr(i, 2), 16))
-    }
-    return res
-}
-
 class ServerSigner {
     /**
      *
@@ -55,7 +47,9 @@ class ServerSigner {
     sign(data, dataEncoding = 'utf8', signatureEncoding = 'hex') {
         if (!this.canSign)
             throw new Error('You can\'t sign data')
-        return this.signingKeypair.sign(Buffer.from(processSigningData(data), dataEncoding)).toString(signatureEncoding)
+        // stellar-sdk v17 returns a plain Uint8Array from Keypair.sign() (was Buffer in v16)
+        const signature = this.signingKeypair.sign(Buffer.from(processSigningData(data), dataEncoding))
+        return Buffer.from(signature).toString(signatureEncoding)
     }
 }
 

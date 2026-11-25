@@ -19,7 +19,7 @@
 - `just run` runs the Docker container on port `4021`.
 
 ## Coding Style & Naming Conventions
-- Node.js 20+, CommonJS modules (`require`/`module.exports`).
+- Node.js 22.12+ (required by `@stellar/stellar-sdk` v17), CommonJS modules (`require`/`module.exports`).
 - 4-space indentation and no semicolons, matching existing files.
 - Test files follow `*.test.js` naming.
 - No formatter/linter configured; keep changes consistent with nearby code.

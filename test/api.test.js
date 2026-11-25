@@ -7,6 +7,7 @@ const { encodeUrlParams } = require('../util/url-encoder')
 const roles = require('../models/user/roles')
 const observer = require('../logic/observer')
 const sinon = require('sinon')
+const {expect} = require('chai')
 
 
 describe('API', function () {
@@ -19,7 +20,8 @@ describe('API', function () {
 
     function signData(key, data) {
         data = typeof data === 'object' ? JSON.stringify(data) : data.toString()
-        return key.sign(data).toString('hex')
+        // stellar-sdk v17: Keypair.sign() takes and returns Uint8Array (not Buffer)
+        return Buffer.from(key.sign(Buffer.from(data))).toString('hex')
     }
 
     before(async function () {
@@ -273,6 +275,17 @@ describe('API', function () {
                 } catch (err) {
                     expect(err.response.status).to.equal(403)
                 }
+            })
+        })
+
+        describe('/GET operation-types', () => {
+            it('it should list all XDR operation types', async () => {
+                const res = await axiosInstance.get('/api/operation-types')
+                expect(res.status).to.equal(200)
+                expect(res.data).to.be.an('array').with.length(27)
+                expect(res.data[0]).to.deep.equal({type: 0, name: 'createAccount', horizon_name: 'create_account'})
+                expect(res.data.map(o => o.type)).to.deep.equal([...Array(27).keys()])
+                expect(res.data[24]).to.deep.equal({type: 24, name: 'invokeHostFunction', horizon_name: 'invoke_host_function'})
             })
         })
 

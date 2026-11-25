@@ -16,28 +16,74 @@ function normalizeAsset(asset) {
     })
 }
 
+/**
+ * Decode an XDR asset code (AssetCode4/AssetCode12 byte wrapper, NUL-padded) to a string.
+ * @param {xdr.AssetCode4|xdr.AssetCode12} assetCode
+ * @returns {string}
+ */
+function assetCodeToString(assetCode) {
+    return Buffer.from(assetCode.toBytes()).toString('utf8').replace(/\0/g, '')
+}
+
 function normalizeXdrAsset(xdrAsset) {
     if (!xdrAsset) return null
-    const type = xdrAsset.switch().name
-    if (type === 'assetTypeNative') {
+    if (xdrAsset.type === 'assetTypeNative') {
         return nativeAsset()
     }
-    const value = xdrAsset.value()
-    if (type === 'assetTypeCreditAlphanum4') {
+    if (xdrAsset.type === 'assetTypeCreditAlphanum4' || xdrAsset.type === 'assetTypeCreditAlphanum12') {
+        const value = xdrAsset.value
         return {
-            asset_type: 1,
-            asset_code: value.assetCode().toString().replace(/\0/g, ''),
-            asset_issuer: StrKey.encodeEd25519PublicKey(value.issuer().ed25519())
-        }
-    }
-    if (type === 'assetTypeCreditAlphanum12') {
-        return {
-            asset_type: 2,
-            asset_code: value.assetCode().toString().replace(/\0/g, ''),
-            asset_issuer: StrKey.encodeEd25519PublicKey(value.issuer().ed25519())
+            asset_type: xdrAsset.type === 'assetTypeCreditAlphanum4' ? 1 : 2,
+            asset_code: assetCodeToString(value.assetCode),
+            asset_issuer: StrKey.encodeEd25519PublicKey(value.issuer.ed25519.toBytes())
         }
     }
     return null
+}
+
+/**
+ * Decode a single trade fill (ClaimAtom: an order book offer or a liquidity pool) to a plain object.
+ * @param {xdr.ClaimAtom} claim
+ * @returns {Object|null}
+ */
+function normalizeClaimAtom(claim) {
+    if (claim.type === 'claimAtomTypeOrderBook') {
+        const ob = claim.orderBook
+        return {
+            type: 'order_book',
+            seller_id: StrKey.encodeEd25519PublicKey(ob.sellerId.ed25519.toBytes()),
+            offer_id: ob.offerId.toString(),
+            asset_sold: normalizeXdrAsset(ob.assetSold),
+            amount_sold: stroopsToAmount(ob.amountSold.toString()),
+            asset_bought: normalizeXdrAsset(ob.assetBought),
+            amount_bought: stroopsToAmount(ob.amountBought.toString())
+        }
+    }
+    if (claim.type === 'claimAtomTypeLiquidityPool') {
+        const lp = claim.liquidityPool
+        return {
+            type: 'liquidity_pool',
+            pool_id: Buffer.from(lp.liquidityPoolId.toBytes()).toString('hex'),
+            asset_sold: normalizeXdrAsset(lp.assetSold),
+            amount_sold: stroopsToAmount(lp.amountSold.toString()),
+            asset_bought: normalizeXdrAsset(lp.assetBought),
+            amount_bought: stroopsToAmount(lp.amountBought.toString())
+        }
+    }
+    return null
+}
+
+/**
+ * Decode a transaction result and return the per-operation results, unwrapping fee-bump transactions.
+ * @param {string} resultXdr - Base64-encoded transaction result XDR
+ * @returns {Array<xdr.OperationResult>|null} null when the result carries no per-operation results (e.g. txBadAuth)
+ */
+function getOperationResults(resultXdr) {
+    const txResult = xdr.TransactionResult.fromXdr(resultXdr, 'base64').result
+    if (txResult.type === 'txFeeBumpInnerSuccess' || txResult.type === 'txFeeBumpInnerFailed') {
+        return txResult.innerResultPair.result.result.results || null
+    }
+    return txResult.results || null
 }
 
 function assetsEqual(a, b) {
@@ -47,80 +93,42 @@ function assetsEqual(a, b) {
 }
 
 /**
+ * Parse the inner result of a manage offer / path payment operation, unwrapping fee-bump transactions.
+ * @param {string} resultXdr - Base64-encoded transaction result XDR
+ * @param {number} operationIndex - Index of the operation in the transaction
+ * @param {Array<string>} opTypes - Allowed inner result types (e.g. 'manageSellOffer')
+ * @returns {Object|null} inner success payload or null if the operation is not one of opTypes or failed
+ */
+function getInnerSuccess(resultXdr, operationIndex, opTypes) {
+    const opResults = getOperationResults(resultXdr)
+    if (!opResults || operationIndex >= opResults.length) return null
+
+    const opResult = opResults[operationIndex]
+    const tr = opResult?.type === 'opInner' ? opResult.tr : null
+    if (!tr || !opTypes.includes(tr.type)) return null
+
+    const inner = tr.value
+    if (!inner.success) return null
+    return inner.success
+}
+
+/**
  * Parse manage offer result XDR to extract created_offer_id and claimed trades.
  * @param {string} resultXdr - Base64-encoded transaction result XDR
  * @param {number} operationIndex - Index of the operation in the transaction
  * @returns {Object} Object with created_offer_id and trades (if any)
  */
 function parseManageOfferResult(resultXdr, operationIndex) {
-    const emptyResult = { trades: [] }
+    const emptyResult = {trades: []}
     try {
-        const result = xdr.TransactionResult.fromXDR(resultXdr, 'base64')
-        const resultType = result.result().switch().name
+        const success = getInnerSuccess(resultXdr, operationIndex, ['manageSellOffer', 'manageBuyOffer'])
+        if (!success) return emptyResult
 
-        // Handle fee-bump transactions
-        let opResults
-        if (resultType === 'txFeeBumpInnerSuccess' || resultType === 'txFeeBumpInnerFailed') {
-            opResults = result.result().innerResultPair().result().result().results()
-        } else {
-            opResults = result.result().results()
-        }
-        if (!opResults || operationIndex >= opResults.length) return emptyResult
+        const resultObj = {trades: (success.offersClaimed || []).map(normalizeClaimAtom).filter(Boolean)}
 
-        const opResult = opResults[operationIndex]
-        const tr = opResult?.tr?.()
-        if (!tr) return emptyResult
-
-        const xdrOpType = tr.switch().name
-        if (xdrOpType !== 'manageSellOffer' && xdrOpType !== 'manageBuyOffer') return emptyResult
-
-        const inner = tr.value()
-        if (!inner?.success) return emptyResult
-
-        const success = inner.success()
-
-        const offersClaimed =
-            typeof success.offersClaimed === 'function'
-                ? success.offersClaimed()
-                : typeof success.offers_claimed === 'function'
-                    ? success.offers_claimed()
-                    : []
-
-        const trades = (offersClaimed || []).map(claim => {
-            const type = claim.switch().name
-            if (type === 'claimAtomTypeOrderBook') {
-                const ob = claim.orderBook()
-                return {
-                    type: 'order_book',
-                    seller_id: StrKey.encodeEd25519PublicKey(ob.sellerId().ed25519()),
-                    offer_id: ob.offerId().toString(),
-                    asset_sold: normalizeXdrAsset(ob.assetSold()),
-                    amount_sold: stroopsToAmount(ob.amountSold().toString()),
-                    asset_bought: normalizeXdrAsset(ob.assetBought()),
-                    amount_bought: stroopsToAmount(ob.amountBought().toString())
-                }
-            } else if (type === 'claimAtomTypeLiquidityPool') {
-                const lp = claim.liquidityPool()
-                return {
-                    type: 'liquidity_pool',
-                    pool_id: lp.liquidityPoolId().toString('hex'),
-                    asset_sold: normalizeXdrAsset(lp.assetSold()),
-                    amount_sold: stroopsToAmount(lp.amountSold().toString()),
-                    asset_bought: normalizeXdrAsset(lp.assetBought()),
-                    amount_bought: stroopsToAmount(lp.amountBought().toString())
-                }
-            }
-            return null
-        }).filter(Boolean)
-
-        const resultObj = { trades }
-
-        const offer = typeof success.offer === 'function' ? success.offer() : null
-        if (offer) {
-            const offerSwitch = offer.switch().name
-            if (offerSwitch === 'manageOfferCreated' || offerSwitch === 'manageOfferUpdated') {
-                resultObj.created_offer_id = offer.offer().offerId().toString()
-            }
+        const offer = success.offer
+        if (offer && (offer.type === 'manageOfferCreated' || offer.type === 'manageOfferUpdated')) {
+            resultObj.created_offer_id = offer.offer.offerId.toString()
         }
 
         return resultObj
@@ -139,67 +147,20 @@ function parseManageOfferResult(resultXdr, operationIndex) {
  * @returns {Object} Object with trades array and actual amounts (dest_amount for strict_send, source_amount for strict_receive)
  */
 function parsePathPaymentTrades(resultXdr, operationIndex, opType, sourceAsset) {
-    const emptyResult = { trades: [] }
+    const emptyResult = {trades: []}
     try {
-        const result = xdr.TransactionResult.fromXDR(resultXdr, 'base64')
-        const resultType = result.result().switch().name
+        const success = getInnerSuccess(resultXdr, operationIndex, ['pathPaymentStrictSend', 'pathPaymentStrictReceive'])
+        if (!success) return emptyResult
 
-        // Handle fee-bump transactions
-        let opResults
-        if (resultType === 'txFeeBumpInnerSuccess' || resultType === 'txFeeBumpInnerFailed') {
-            opResults = result.result().innerResultPair().result().result().results()
-        } else {
-            opResults = result.result().results()
-        }
-        if (!opResults || operationIndex >= opResults.length) return emptyResult
-
-        const opResult = opResults[operationIndex]
-        const tr = opResult?.tr?.()
-        if (!tr) return emptyResult
-
-        const xdrOpType = tr.switch().name
-        if (xdrOpType !== 'pathPaymentStrictSend' && xdrOpType !== 'pathPaymentStrictReceive') return emptyResult
-
-        const inner = tr.value()
-        if (!inner?.success) return emptyResult
-
-        const success = inner.success()
-        const offers = success?.offers?.() || []
-
-        const trades = offers.map(claim => {
-            const type = claim.switch().name
-            if (type === 'claimAtomTypeOrderBook') {
-                const ob = claim.orderBook()
-                return {
-                    type: 'order_book',
-                    seller_id: StrKey.encodeEd25519PublicKey(ob.sellerId().ed25519()),
-                    offer_id: ob.offerId().toString(),
-                    asset_sold: normalizeXdrAsset(ob.assetSold()),
-                    amount_sold: stroopsToAmount(ob.amountSold().toString()),
-                    asset_bought: normalizeXdrAsset(ob.assetBought()),
-                    amount_bought: stroopsToAmount(ob.amountBought().toString())
-                }
-            } else if (type === 'claimAtomTypeLiquidityPool') {
-                const lp = claim.liquidityPool()
-                return {
-                    type: 'liquidity_pool',
-                    pool_id: lp.liquidityPoolId().toString('hex'),
-                    asset_sold: normalizeXdrAsset(lp.assetSold()),
-                    amount_sold: stroopsToAmount(lp.amountSold().toString()),
-                    asset_bought: normalizeXdrAsset(lp.assetBought()),
-                    amount_bought: stroopsToAmount(lp.amountBought().toString())
-                }
-            }
-            return null
-        }).filter(Boolean)
+        const trades = (success.offers || []).map(normalizeClaimAtom).filter(Boolean)
 
         // Extract actual amounts from the result
-        const resultObj = { trades }
+        const resultObj = {trades}
 
         // last contains SimplePaymentResult: { destination, asset, amount }
-        const last = success.last()
+        const last = success.last
         if (last) {
-            const destAmount = stroopsToAmount(last.amount().toString())
+            const destAmount = stroopsToAmount(last.amount.toString())
 
             if (opType === 'path_payment_strict_send') {
                 // For strict_send: last.amount is the actual destination amount received
@@ -221,6 +182,74 @@ function parsePathPaymentTrades(resultXdr, operationIndex, opType, sourceAsset) 
         console.error('Failed to parse path payment trades:', e.message)
         return emptyResult
     }
+}
+
+/**
+ * Normalize any of the seven revoke sponsorship operation flavors to a single shape.
+ * `revoke_type` tells which ledger entry lost its sponsor.
+ * @param {StellarBase.Operation} operation
+ * @returns {Object}
+ */
+function normalizeRevokeSponsorship(operation) {
+    const res = {type_i: 18, type: 'revoke_sponsorship'}
+    switch (operation.type) {
+        case 'revokeAccountSponsorship':
+            return {...res, revoke_type: 'account', account: operation.account}
+        case 'revokeTrustlineSponsorship':
+            // plain {code, issuer} object here, not an Asset instance
+            return {...res, revoke_type: 'trustline', account: operation.account, asset: normalizeAsset(operation.asset)}
+        case 'revokeOfferSponsorship':
+            return {...res, revoke_type: 'offer', account: operation.seller, offer_id: operation.offerId}
+        case 'revokeDataSponsorship':
+            return {...res, revoke_type: 'data', account: operation.account, data_name: operation.name}
+        case 'revokeClaimableBalanceSponsorship':
+            return {...res, revoke_type: 'claimable_balance', balance_id: operation.balanceId}
+        case 'revokeLiquidityPoolSponsorship':
+            return {...res, revoke_type: 'liquidity_pool', liquidity_pool_id: operation.liquidityPoolId}
+        case 'revokeSignerSponsorship': {
+            // signer is {ed25519PublicKey} | {preAuthTx} | {sha256Hash} | {ed25519SignedPayload}
+            const signer = operation.signer || {}
+            return {...res, revoke_type: 'signer', account: operation.account, signer_key: Object.values(signer)[0] || null}
+        }
+    }
+    return null
+}
+
+/**
+ * Normalize a claimable balance predicate to a plain JSON shape (same as SEP-0051 JSON):
+ * "unconditional" | {and: [..]} | {or: [..]} | {not: ..} | {before_absolute_time: ".."} | {before_relative_time: ".."}
+ * @param {xdr.ClaimPredicate|null} predicate
+ * @returns {*}
+ */
+function normalizeClaimPredicate(predicate) {
+    if (!predicate) return 'unconditional'
+    switch (predicate.type) {
+        case 'claimPredicateUnconditional':
+            return 'unconditional'
+        case 'claimPredicateAnd':
+            return {and: (predicate.andPredicates || []).map(normalizeClaimPredicate)}
+        case 'claimPredicateOr':
+            return {or: (predicate.orPredicates || []).map(normalizeClaimPredicate)}
+        case 'claimPredicateNot':
+            return {not: predicate.notPredicate ? normalizeClaimPredicate(predicate.notPredicate) : null}
+        case 'claimPredicateBeforeAbsoluteTime':
+            return {before_absolute_time: predicate.absBefore.toString()}
+        case 'claimPredicateBeforeRelativeTime':
+            return {before_relative_time: predicate.relBefore.toString()}
+    }
+    return 'unconditional'
+}
+
+/**
+ * Normalize claimants of a create_claimable_balance operation.
+ * @param {Array<StellarBase.Claimant>} claimants
+ * @returns {Array<{destination: string, predicate: *}>}
+ */
+function normalizeClaimants(claimants) {
+    return (claimants || []).map(claimant => ({
+        destination: claimant._destination ?? claimant.destination,
+        predicate: normalizeClaimPredicate(claimant._predicate ?? claimant.predicate)
+    }))
 }
 
 /**
@@ -313,8 +342,12 @@ function normalizeOperation(operation) {
                 home_domain: operation.homeDomain
             }
             if (operation.signer) {
-                res.signer_key = operation.signer.key
-                res.signer_weight = operation.signer.weight
+                // signer is {weight, ed25519PublicKey | sha256Hash | preAuthTx | ed25519SignedPayload};
+                // the hash/tx signers come as raw bytes (Uint8Array) — encode as hex like Horizon does
+                const {weight, ...keys} = operation.signer
+                const key = Object.values(keys).find(Boolean)
+                res.signer_key = key instanceof Uint8Array ? Buffer.from(key).toString('hex') : (key || null)
+                res.signer_weight = weight
             }
             return res
         case 'changeTrust':
@@ -349,7 +382,8 @@ function normalizeOperation(operation) {
                 type_i: 10,
                 type: 'manage_data',
                 name: operation.name,
-                value: operation.value ? operation.value.toString('utf8') : null
+                // raw bytes (Uint8Array) in the SDK, null when the data entry is removed
+                value: operation.value ? Buffer.from(operation.value).toString('utf8') : null
             }
         case 'bumpSequence':
             return {
@@ -363,7 +397,7 @@ function normalizeOperation(operation) {
                 type_i: 14,
                 asset: normalizeAsset(operation.asset),
                 amount: operation.amount,
-                claimants: operation.claimants
+                claimants: normalizeClaimants(operation.claimants)
             }
         case 'claimClaimableBalance':
             return {
@@ -382,23 +416,15 @@ function normalizeOperation(operation) {
                 type: 'end_sponsoring_future_reserves',
                 type_i: 17
             }
-        case 'revokeSponsorship': {
-            const res = {
-                type: 'revoke_sponsorship',
-                type_i: 18
-            }
-            if (operation.ledgerKey) {
-                res.ledgerKey = operation.ledgerKey
-            } else if (operation.signer) {
-                res.signer = {
-                    accountId: operation.signer.accountId,
-                    signerKey: operation.signer.signerKey
-                }
-            } else {
-                res.accountId = operation.account
-            }
-            return res
-        }
+        // the SDK exposes seven distinct operation types for revoke sponsorship
+        case 'revokeAccountSponsorship':
+        case 'revokeTrustlineSponsorship':
+        case 'revokeOfferSponsorship':
+        case 'revokeDataSponsorship':
+        case 'revokeClaimableBalanceSponsorship':
+        case 'revokeLiquidityPoolSponsorship':
+        case 'revokeSignerSponsorship':
+            return normalizeRevokeSponsorship(operation)
         case 'clawback':
             return {
                 type: 'clawback',
@@ -448,30 +474,35 @@ function normalizeOperation(operation) {
             }
             const hf = operation.func
             if (hf) {
-                const sw = hf.switch().name
-                if (sw === 'hostFunctionTypeInvokeContract') {
+                // xdr.HostFunction is a discriminated union in stellar-sdk v17 (`.type` + arm properties)
+                if (hf.type === 'hostFunctionTypeInvokeContract') {
                     normalized.host_function_type = 'invoke_contract'
                     try {
-                        const inv = hf.invokeContract()
-                        normalized.contract = StrKey.encodeContract(inv.contractAddress().contractId())
-                        normalized.function_name = inv.functionName().toString()
+                        const inv = hf.invokeContract
+                        // the contract address arm is always scAddressTypeContract on valid transactions, guard anyway
+                        normalized.contract = inv.contractAddress?.contractId
+                            ? StrKey.encodeContract(inv.contractAddress.contractId.toBytes())
+                            : null
+                        normalized.function_name = inv.functionName.toString()
                         try {
-                            normalized.args = inv.args().map(a => stringifyBigInts(scValToNative(a)))
+                            // addresses come as strkeys: G…/C… plain, M…/W… muxed (Protocol 27/30)
+                            normalized.args = inv.args.map(a => stringifyBigInts(scValToNative(a)))
                         } catch (e) {
                             normalized.args = null
                         }
                     } catch (e) {
                         // fall through — partial decoding
                     }
-                } else if (sw === 'hostFunctionTypeCreateContract' || sw === 'hostFunctionTypeCreateContractV2') {
+                } else if (hf.type === 'hostFunctionTypeCreateContract' || hf.type === 'hostFunctionTypeCreateContractV2') {
                     normalized.host_function_type = 'create_contract'
-                } else if (sw === 'hostFunctionTypeUploadContractWasm') {
+                } else if (hf.type === 'hostFunctionTypeUploadContractWasm') {
                     normalized.host_function_type = 'upload_wasm'
                 }
             }
             return normalized
         }
         case 'extendFootprintTTL':
+        case 'extendFootprintTtl':
             return {
                 type: 'extend_footprint_ttl',
                 type_i: 25,
@@ -526,26 +557,28 @@ function processOperation(operation, txDetails, applicationOrder) {
 
 /**
  * Normalize transaction memo
- * @param {StellarBase.Memo} rawMemo - raw XDR memo
+ * @param {StellarBase.Memo} rawMemo - SDK Memo (`.type` + `.value`, bytes as Uint8Array)
  * @returns {*}
  */
 function processMemo(rawMemo) {
-    switch (rawMemo._type) {
+    if (!rawMemo) return undefined
+    const value = rawMemo.value
+    switch (rawMemo.type) {
         case 'id':
             return {
-                type: rawMemo._type,
-                value: rawMemo._value
+                type: 'id',
+                value: value.toString()
             }
         case 'text':
             return {
-                type: rawMemo._type,
-                value: rawMemo._value.toString('utf8')
+                type: 'text',
+                value: Buffer.from(value).toString('utf8')
             }
         case 'hash':
         case 'return':
             return {
-                type: rawMemo._type,
-                value: rawMemo._value.toString('base64')
+                type: rawMemo.type,
+                value: Buffer.from(value).toString('base64')
             }
     }
     return undefined
@@ -560,7 +593,7 @@ function parseTransaction(transaction) {
     let xdrTx
     try {
         const networkPassphrase = config.networkPassphrase || 'Public Global Stellar Network ; September 2015'
-        xdrTx = TransactionBuilder.fromXDR(transaction.envelope_xdr, networkPassphrase)
+        xdrTx = TransactionBuilder.fromXdr(transaction.envelope_xdr, networkPassphrase)
         if (xdrTx.innerTransaction) {
             xdrTx = xdrTx.innerTransaction
         }

@@ -1,6 +1,6 @@
 const expect = require('chai').expect;
 const sinon = require('sinon');
-const { TransactionBuilder, Operation, Keypair, Account, Networks, Address, nativeToScVal } = require('@stellar/stellar-sdk');
+const { TransactionBuilder, Operation, Keypair, Account, Networks, Asset, Claimant, Memo, Address, nativeToScVal } = require('@stellar/stellar-sdk');
 const { parseTransaction, parsePathPaymentTrades, parseManageOfferResult } = require('../logic/stream-processor');
 
 describe('stream-processor', function () {
@@ -18,13 +18,13 @@ describe('stream-processor', function () {
             created_at: '2020-08-06T14:42:32Z',
             envelope_xdr: 'dummy_xdr',
             operations: operations,
-            memo: { _type: 'none' }
+            memo: { type: 'none', value: null }
         };
     }
 
     function createTxMock(operation) {
         const tx = mockTransaction([operation]);
-        sinon.stub(TransactionBuilder, 'fromXDR').returns(tx);
+        sinon.stub(TransactionBuilder, 'fromXdr').returns(tx);
         return tx;
     }
 
@@ -85,12 +85,35 @@ describe('stream-processor', function () {
         expect(parsed.operations[0].type).to.equal('end_sponsoring_future_reserves');
     });
 
-    it('should parse revokeSponsorship', function () {
-        const operation = { type: 'revokeSponsorship', ledgerKey: '0000000052667421c75a7a514b8a2e3b2b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b' };
-        const tx = createTxMock(operation);
-        const parsed = parseTransaction(tx);
-        expect(parsed.operations[0].type).to.equal('revoke_sponsorship');
-    });
+    // the SDK exposes seven distinct operation types for revoke sponsorship
+    const revokeSponsorshipCases = [
+        [{type: 'revokeAccountSponsorship', account: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN'},
+            {revoke_type: 'account', account: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN'}],
+        [{type: 'revokeTrustlineSponsorship', account: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN', asset: {code: 'USD', issuer: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN'}},
+            {revoke_type: 'trustline', account: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN', asset: {asset_type: 1, asset_code: 'USD', asset_issuer: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN'}}],
+        [{type: 'revokeOfferSponsorship', seller: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN', offerId: '1821833749'},
+            {revoke_type: 'offer', account: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN', offer_id: '1821833749'}],
+        [{type: 'revokeDataSponsorship', account: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN', name: 'config'},
+            {revoke_type: 'data', account: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN', data_name: 'config'}],
+        [{type: 'revokeClaimableBalanceSponsorship', balanceId: '0'.repeat(64)},
+            {revoke_type: 'claimable_balance', balance_id: '0'.repeat(64)}],
+        [{type: 'revokeLiquidityPoolSponsorship', liquidityPoolId: 'ab'.repeat(32)},
+            {revoke_type: 'liquidity_pool', liquidity_pool_id: 'ab'.repeat(32)}],
+        [{type: 'revokeSignerSponsorship', account: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN', signer: {ed25519PublicKey: 'GBYH3M3REQM3WQOJY26FYORN23EXY22FWBHVZ74TT5GYOF22IIA7YSOX'}},
+            {revoke_type: 'signer', account: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN', signer_key: 'GBYH3M3REQM3WQOJY26FYORN23EXY22FWBHVZ74TT5GYOF22IIA7YSOX'}]
+    ];
+    for (const [operation, expected] of revokeSponsorshipCases) {
+        it(`should parse ${operation.type}`, function () {
+            const tx = createTxMock(operation);
+            const parsed = parseTransaction(tx);
+            const normalized = parsed.operations[0];
+            expect(normalized.type).to.equal('revoke_sponsorship');
+            expect(normalized.type_i).to.equal(18);
+            for (const [key, value] of Object.entries(expected)) {
+                expect(normalized[key], key).to.deep.equal(value);
+            }
+        });
+    }
 
     it('should parse clawback', function () {
         const operation = { type: 'clawback', from: 'GA7QYNF7SOWQ3GLR2BGMZEP2QWK7NG4V4QYP5S2PL6ADTLK2GGFE9XPQ', asset: { code: 'USD', issuer: 'GDUN55P4M332X24DYIUI64HLM3224525Y4DO6T43Y443P2P5C5Z5Y5N5' }, amount: '1000' };
@@ -220,6 +243,141 @@ describe('stream-processor', function () {
         expect(parsed).to.not.be.null;
         expect(parsed.operations.length).to.equal(1);
         expect(parsed.operations[0].type).to.equal('invoke_host_function');
+    });
+
+    it('should decode Protocol 30 muxed contract (W…) addresses in invokeContract args', function () {
+        // envelope: invoke_host_function transfer(W…, i128, map{to_muxed_id, nested:[W…]}, C…) built with stellar-sdk 17
+        const fixture = require('./fixtures/protocol30-muxed-contract.json');
+        const rawTx = {
+            hash: '4d03923c56a811d739b6e8284c7c88bdf5846175407b7b14d2ee9bdfbfa2ca85',
+            paging_token: '276443864905879552',
+            successful: true,
+            source_account: fixture.gAddress,
+            source_account_sequence: '2',
+            created_at: '2026-11-23T17:00:00Z',
+            envelope_xdr: fixture.envelopeXdr,
+            result_xdr: '',
+            memo_type: 'none'
+        };
+        const parsed = parseTransaction(rawTx);
+        expect(parsed).to.not.be.null;
+        const normalized = parsed.operations[0];
+        expect(normalized.type).to.equal('invoke_host_function');
+        expect(normalized.host_function_type).to.equal('invoke_contract');
+        expect(normalized.contract).to.equal(fixture.cAddress);
+        expect(normalized.function_name).to.equal('transfer');
+        expect(normalized.args).to.be.an('array').with.length(4);
+        // muxed contract address (CAP-84) is rendered as a W… strkey
+        expect(normalized.args[0]).to.equal(fixture.wAddress);
+        expect(normalized.args[1]).to.equal('10000000');
+        // ScVal maps decode to plain objects
+        expect(normalized.args[2]).to.deep.equal({
+            to_muxed_id: '123456789',
+            nested: [fixture.wAddress, 'x']
+        });
+        expect(normalized.args[3]).to.equal(fixture.cAddress);
+    });
+
+    it('should normalize claimants of create_claimable_balance to a stable shape', function () {
+        const src = Keypair.random();
+        const account = new Account(src.publicKey(), '1');
+        const tx = new TransactionBuilder(account, { fee: '100', networkPassphrase: Networks.PUBLIC })
+            .addOperation(Operation.createClaimableBalance({
+                asset: Asset.native(),
+                amount: '1',
+                claimants: [
+                    new Claimant(src.publicKey(), Claimant.predicateBeforeRelativeTime(86400)),
+                    new Claimant(src.publicKey(), Claimant.predicateAnd(
+                        Claimant.predicateBeforeRelativeTime(60),
+                        Claimant.predicateNot(Claimant.predicateBeforeAbsoluteTime(1700000000))
+                    )),
+                    new Claimant(src.publicKey())
+                ]
+            }))
+            .addOperation(Operation.manageData({ name: 'config', value: Buffer.from('{"a":1}') }))
+            .setTimeout(0)
+            .build();
+        const parsed = parseTransaction({
+            hash: 'deadbeef', paging_token: '1', successful: true,
+            source_account: src.publicKey(), source_account_sequence: '1',
+            created_at: '2026-11-23T17:00:00Z', envelope_xdr: tx.toXDR(), result_xdr: '', memo_type: 'none'
+        });
+        const [claim, data] = parsed.operations;
+        expect(claim.claimants).to.deep.equal([
+            { destination: src.publicKey(), predicate: { before_relative_time: '86400' } },
+            { destination: src.publicKey(), predicate: { and: [{ before_relative_time: '60' }, { not: { before_absolute_time: '1700000000' } }] } },
+            { destination: src.publicKey(), predicate: 'unconditional' }
+        ]);
+        expect(data.type).to.equal('manage_data');
+        expect(data.value).to.equal('{"a":1}');
+    });
+
+    it('should parse extend_footprint_ttl and restore_footprint from a real envelope', function () {
+        // the SDK exposes the type as `extendFootprintTtl` (lowercase `tl`)
+        const src = Keypair.random();
+        const tx = new TransactionBuilder(new Account(src.publicKey(), '1'), { fee: '100', networkPassphrase: Networks.PUBLIC })
+            .addOperation(Operation.extendFootprintTtl({ extendTo: 123456 }))
+            .addOperation(Operation.restoreFootprint({}))
+            .setTimeout(0)
+            .build();
+        const parsed = parseTransaction({
+            hash: 'deadbeef', paging_token: '1', successful: true,
+            source_account: src.publicKey(), source_account_sequence: '1',
+            created_at: '2026-11-25T00:00:00Z', envelope_xdr: tx.toXDR(), result_xdr: '', memo_type: 'none'
+        });
+        expect(parsed.operations.map(op => op.type)).to.deep.equal(['extend_footprint_ttl', 'restore_footprint']);
+        expect(parsed.operations[0].type_i).to.equal(25);
+        expect(parsed.operations[0].extendTo).to.equal(123456);
+        expect(parsed.operations[1].type_i).to.equal(26);
+    });
+
+    it('should decode every memo type from a real envelope', function () {
+        const src = Keypair.random();
+        const parse = memo => {
+            const tx = new TransactionBuilder(new Account(src.publicKey(), '1'), { fee: '100', networkPassphrase: Networks.PUBLIC, memo })
+                .addOperation(Operation.payment({ destination: src.publicKey(), asset: Asset.native(), amount: '1' }))
+                .setTimeout(0)
+                .build();
+            return parseTransaction({
+                hash: 'deadbeef', paging_token: '1', successful: true,
+                source_account: src.publicKey(), source_account_sequence: '1',
+                created_at: '2026-11-25T00:00:00Z', envelope_xdr: tx.toXDR(), result_xdr: '', memo_type: memo.type
+            }).details.memo;
+        };
+        const hash = Buffer.alloc(32, 9);
+        expect(parse(Memo.none())).to.equal(undefined);
+        expect(parse(Memo.id('123456789012345'))).to.deep.equal({ type: 'id', value: '123456789012345' });
+        expect(parse(Memo.text('депозит №42'))).to.deep.equal({ type: 'text', value: 'депозит №42' });
+        expect(parse(Memo.hash(hash))).to.deep.equal({ type: 'hash', value: hash.toString('base64') });
+        expect(parse(Memo.return(hash))).to.deep.equal({ type: 'return', value: hash.toString('base64') });
+    });
+
+    it('should decode set_options signer and home domain from a real envelope', function () {
+        const src = Keypair.random();
+        const tx = new TransactionBuilder(new Account(src.publicKey(), '1'), { fee: '100', networkPassphrase: Networks.PUBLIC })
+            .addOperation(Operation.setOptions({
+                signer: { ed25519PublicKey: src.publicKey(), weight: 3 },
+                homeDomain: 'example.com',
+                masterWeight: 2, lowThreshold: 1, medThreshold: 2, highThreshold: 3,
+                setFlags: 1, clearFlags: 2, inflationDest: src.publicKey()
+            }))
+            .addOperation(Operation.setOptions({signer: {sha256Hash: Buffer.alloc(32, 2), weight: 1}}))
+            .addOperation(Operation.setOptions({signer: {preAuthTx: Buffer.alloc(32, 3), weight: 1}}))
+            .setTimeout(0)
+            .build();
+        const [op, hashSigner, preAuthSigner] = parseTransaction({
+            hash: 'deadbeef', paging_token: '1', successful: true,
+            source_account: src.publicKey(), source_account_sequence: '1',
+            created_at: '2026-11-25T00:00:00Z', envelope_xdr: tx.toXDR(), result_xdr: '', memo_type: 'none'
+        }).operations;
+        expect(op.type).to.equal('set_options');
+        expect(op.home_domain).to.equal('example.com');
+        expect(op.signer_key).to.equal(src.publicKey());
+        expect(op.signer_weight).to.equal(3);
+        expect(op.inflation_dest).to.equal(src.publicKey());
+        // byte signers are encoded as hex strings (SDK returns raw Uint8Array here)
+        expect(hashSigner.signer_key).to.equal('02'.repeat(32));
+        expect(preAuthSigner.signer_key).to.equal('03'.repeat(32));
     });
 
     it('should parse extendFootprintTTL', function () {
@@ -361,12 +519,34 @@ describe('stream-processor', function () {
             expect(result.created_offer_id).to.equal('1821833749');
         });
 
-        it('should return empty object when offer is deleted (fully filled)', function () {
-            // result_xdr with manageOfferDeleted result
-            // Transaction where offer was fully filled immediately
-            const deletedOfferResultXdr = 'AAAAAAAAAGQAAAAAAAAAAQAAAAAAAAADAAAAAAAAAAEAAAAAnXeycMNiUYDu6oVpIipu7XFYIo6Zap7mR+V0DI6dZhoAAAAAYyzggwAAAAFZRVNCVQAAAAAAAAAAAAAABKm3owZNa8bB1ZbPOeEZwMn6SWmWnL4MJkNI8TQwb6oAAAAADWSwQAAAAAF4WExNAAAAACI213D+DT4BUhl11c96xIQrcJXWsanXaNPppjLpmQa+AAABJWv0gDQAAAAAAAAAAAAAAAA=';
+        it('should parse trades without created_offer_id when offer is deleted (fully filled)', function () {
+            // valid TransactionResult built with stellar-sdk 17: manage_sell_offer success,
+            // one order book fill, effect = manageOfferDeleted
+            const deletedOfferResultXdr = 'AAAAAAAAAGQAAAAAAAAAAQAAAAAAAAADAAAAAAAAAAEAAAABAAAAAHB9s3EkGbtByca8XDot1sl8a0WwT1z/k59NhxdaQgH8AAAAAAAAAGMAAAAAAAAAAABMS0AAAAABVVNEAAAAAABwfbNxJBm7QcnGvFw6LdbJfGtFsE9c/5OfTYcXWkIB/AAAAAAAJiWgAAAAAgAAAAA=';
             const result = parseManageOfferResult(deletedOfferResultXdr, 0);
-            expect(result).to.deep.equal({trades: []});
+            expect(result).to.not.have.property('created_offer_id');
+            expect(result.trades).to.have.length(1);
+            expect(result.trades[0]).to.deep.equal({
+                type: 'order_book',
+                seller_id: 'GBYH3M3REQM3WQOJY26FYORN23EXY22FWBHVZ74TT5GYOF22IIA7YSOX',
+                offer_id: '99',
+                asset_sold: {asset_type: 0},
+                amount_sold: '0.5000000',
+                asset_bought: {
+                    asset_type: 1,
+                    asset_code: 'USD',
+                    asset_issuer: 'GBYH3M3REQM3WQOJY26FYORN23EXY22FWBHVZ74TT5GYOF22IIA7YSOX'
+                },
+                amount_bought: '0.2500000'
+            });
+        });
+
+        it('should unwrap fee-bump transactions', function () {
+            // the pathPaymentResultXdr above wrapped as the inner result of a fee-bump transaction (stellar-sdk 17)
+            const feeBumpResultXdr = 'AAAAAAAAAMgAAAABAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEAAAAAAAAAZAAAAAAAAAABAAAAAAAAAA0AAAAAAAAABgAAAAIvlCf64lhvvgit20YKSj58sWvbKiMou7ebfoLr/wflNwAAAAFYTEwAAAAAAAgUpMDX+V+Z9PxwsASbPbF5LZnfOHi7WaEQP6GM0W7MAAAGr4QbvRAAAAAAAAAAAAAAzRQAAAACk9yairgnoBl5qfo/JJXDc/EOPpVbJBFFtTkNb45V1t0AAAABT0xUAAAAAAAvruau4mryDVuPyUKI1UduJ0DMqaDc1Ks2NRtMKIBtrAAAAAAOEi+eAAAAAVhMTQAAAAAACBSkwNf5X5n0/HCwBJs9sXktmd84eLtZoRA/oYzRbswAAAavhBu9EAAAAAKCDa44K9ZkdallUXFwIanlffPCMI4fjv2Q+ndNf01/dgAAAAJ4UlVORVMAAAAAAAAAAAAAlwl+48ZbxT7dlNNarPKWD9HgMLjEzJuvFYJp30QFEd4AAAAAAVlrvQAAAAFOTFQAAAAAAC+u5q7iavINW4/JQojVR24nQMypoNzUqzY1G0wogG2sAAAAAA4SL54AAAACKFCsSijVx0Tin4Glb86LHoeTTomskhi8Taln85nRqckAAAACU0RFWEVYAAAAAAAAAAAAAGB2Djau7U7gAg0oIOOY899gpvbthSN26fbKLh7paa+CAAAAAA4O2UIAAAACeFJVTkVTAAAAAAAAAAAAAJcJfuPGW8U+3ZTTWqzylg/R4DC4xMybrxWCad9EBRHeAAAAAAFZa70AAAABAAAAAJ13snPDYlGA7uqFaSIqbu1xWCGOmWqe5kfldAyOnWYaAAAAAGMs4IMAAAAAAAAAAAAA0C4AAAACU0RFWEVYAAAAAAAAAAAAAGB2Djau7U7gAg0oIOOY899gpvbthSN26fbKLh7paa+CAAAAAA4O2UIAAAABAAAAAG1/PJw7LcgPxf8sFxfSVvfgRSLrgwMJLrbrggyGWLslAAAAAGMqjf4AAAABeVhMTQAAAAAiNtdw/g0+AVIZddXPesSEK3CV1rGp12jT6aYy6ZkGvgAAAAAAANAuAAAAAAAAAAAAANAuAAAAABm4o+K40C1yfZ3rzZcmQ41kccM9hEi7kx6Yu169gGpLAAAAAXlYTE0AAAAAIjbXcP4NPgFSGXXVz3rEhCtwldaxqddo0+mmMumZBr4AAAAAAADQLgAAAAAAAAAA';
+            const result = parsePathPaymentTrades(feeBumpResultXdr, 0, 'path_payment_strict_send');
+            expect(result.trades).to.have.length(6);
+            expect(result.dest_amount).to.equal('0.0053294');
         });
     });
 });

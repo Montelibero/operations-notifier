@@ -51,9 +51,10 @@ your own hosted Horizon instance. The latter option is preferable for production
 setups. Nevertheless, public Horizon instances supported by SDF and other
 community members work just fine as well.
 
-#### NodeJS 20+
+#### NodeJS 22.12+
 
-The service requires NodeJS 20 or later.
+The service requires NodeJS 22.12 or later (the CommonJS build of
+`@stellar/stellar-sdk` v17 depends on `require(esm)`, available from Node 22.12).
 
 #### (Optional) MongoDB 3.2+ or other storage provider
 
@@ -410,7 +411,7 @@ const payload = encodeUriParams({
 })
 
 const keyPair = Keypair.fromSecret('private_key'),
-    signature = keyPair.sign(payload).toString('hex')
+    signature = Buffer.from(keyPair.sign(Buffer.from(payload))).toString('hex')
 
 const authHeader = `ed25519 ${keyPair.publicKey()}.${signature}`,
     requestUrl = `<protected_api_endpoint>?${payload}`
@@ -427,7 +428,7 @@ const body = {
 }
 
 const keyPair = Keypair.fromSecret('private_key'),
-    signature = keyPair.sign(encodeUriParams(body)).toString('hex')
+    signature = Buffer.from(keyPair.sign(Buffer.from(encodeUriParams(body)))).toString('hex')
 
 const authHeader = `ed25519 ${keyPair.publicKey()}.${signature}`
 
@@ -761,7 +762,9 @@ from the transaction envelope and attaches the following fields to
 - **function_name** — the contract method being called (e.g. `transfer`).
 - **args** — array of arguments, decoded via `scValToNative`. `i128`/`u128`/
   `i64`/`u64` values are returned as decimal **strings** (JSON can't hold
-  bigints). Buffers become base64 strings.
+  bigints). Buffers become base64 strings. Addresses are returned as strkeys:
+  `G…` (account), `C…` (contract), `M…` (muxed account, CAP-67) and `W…`
+  (muxed contract, Protocol 30 / CAP-84) — see [Muxed contract addresses](#muxed-contract-addresses-w-protocol-30).
 
 If `sorobanRpcUrl` is configured, the notifier additionally fetches the
 transaction meta from the Soroban RPC (Horizon does not expose it) **only
@@ -773,7 +776,23 @@ when at least one subscription matches the operation** and attaches:
   call) — filter by `event.contract` on the receiver side if needed.
 - **return_value** — the decoded contract return value.
 
-Example webhook payload for a Soroban invocation:
+#### Muxed contract addresses (`W…`, Protocol 30)
+
+Since Protocol 30 a Stellar Asset Contract `transfer` accepts a muxed
+contract address as the destination: `W…` = a `C…` contract address plus a
+64-bit multiplexing identifier (SEP-23). Tokens always land on the underlying
+`C…` contract; the identifier is only routing metadata for off-chain systems
+(exchanges, custodians). The notifier exposes it in two places:
+
+- in `operation.args` — the `W…` strkey itself (`StrKey.decodeMuxedContract`
+  in the SDK splits it back into the contract id and the muxed id);
+- in `events` of the `transfer` — the Stellar Asset Contract puts the plain `C…`
+  address in the topics and carries the identifier in `event.data.to_muxed_id` as
+  a decimal string, exactly like `to_muxed_id` for muxed accounts. Other contracts
+  may emit the `W…` address itself in `topics`/`data` — it is decoded to the `W…`
+  strkey as-is.
+
+Subscriptions keep matching by the plain `C…` contract address.
 
 ```json
 {

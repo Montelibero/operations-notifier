@@ -35,16 +35,17 @@ function scValToJson(sv) {
 function decodeEvent(e) {
     const out = {type: null, contract: null, topics: null, data: null}
     try {
-        out.type = e.type().name
+        // ContractEventType is an enum instance in stellar-sdk v17 (system | contract | diagnostic)
+        out.type = typeof e.type === 'string' ? e.type : e.type?.name
     } catch (_) {}
     try {
-        const cid = e.contractId()
-        if (cid) out.contract = StrKey.encodeContract(cid)
+        const cid = e.contractId
+        if (cid) out.contract = StrKey.encodeContract(cid.toBytes())
     } catch (_) {}
     try {
-        const body = e.body().v0()
-        out.topics = body.topics().map(scValToJson)
-        out.data = scValToJson(body.data())
+        const body = e.body.v0
+        out.topics = body.topics.map(scValToJson)
+        out.data = scValToJson(body.data)
     } catch (_) {}
     return out
 }
@@ -52,10 +53,10 @@ function decodeEvent(e) {
 /**
  * Decode Soroban transaction meta into {events, return_value}.
  *
- * Supports both TransactionMetaV3 (events live in sorobanMeta.events(),
- * return value in sorobanMeta.returnValue()) and TransactionMetaV4
- * (events live per-operation at v4.operations[i].events(), return value
- * still at sorobanMeta.returnValue()).
+ * Supports both TransactionMetaV3 (events live in sorobanMeta.events,
+ * return value in sorobanMeta.returnValue) and TransactionMetaV4
+ * (events live per-operation at v4.operations[i].events, return value
+ * still at sorobanMeta.returnValue).
  *
  * @param {string} resultMetaXdrBase64
  * @param {number} opIndex - operation application order (0-based)
@@ -65,45 +66,33 @@ function decodeMeta(resultMetaXdrBase64, opIndex = 0) {
     if (!resultMetaXdrBase64) return {events: null, return_value: null}
     let meta
     try {
-        meta = xdr.TransactionMeta.fromXDR(resultMetaXdrBase64, 'base64')
+        meta = xdr.TransactionMeta.fromXdr(resultMetaXdrBase64, 'base64')
     } catch (e) {
         logger.warn(`soroban-helper: failed to parse TransactionMeta: ${e.message}`)
         return {events: null, return_value: null}
     }
-    const variant = meta.value()
+    const variant = meta.type === 'v3' ? meta.v3 : meta.type === 'v4' ? meta.v4 : null
+    if (!variant) return {events: null, return_value: null}
     let events = []
     let returnValue = null
 
-    // sorobanMeta — present in both v3 and v4
-    let sm = null
-    try {
-        sm = variant.sorobanMeta && variant.sorobanMeta()
-    } catch (_) {}
-
+    // sorobanMeta — present in both v3 and v4 (null for non-Soroban transactions)
+    const sm = variant.sorobanMeta
     if (sm) {
-        // return value
         try {
-            returnValue = scValToJson(sm.returnValue())
+            if (sm.returnValue) returnValue = scValToJson(sm.returnValue)
         } catch (_) {}
         // v3: events list directly on sorobanMeta
-        try {
-            if (typeof sm.events === 'function') {
-                const evs = sm.events()
-                if (Array.isArray(evs) && evs.length) {
-                    for (const e of evs) events.push(decodeEvent(e))
-                }
-            }
-        } catch (_) {}
+        if (Array.isArray(sm.events)) {
+            for (const e of sm.events) events.push(decodeEvent(e))
+        }
     }
 
     // v4: per-operation events
     try {
-        if (typeof variant.operations === 'function') {
-            const ops = variant.operations()
-            if (ops && ops[opIndex] && typeof ops[opIndex].events === 'function') {
-                const evs = ops[opIndex].events()
-                for (const e of evs) events.push(decodeEvent(e))
-            }
+        const ops = variant.operations
+        if (ops && ops[opIndex] && Array.isArray(ops[opIndex].events)) {
+            for (const e of ops[opIndex].events) events.push(decodeEvent(e))
         }
     } catch (_) {}
 

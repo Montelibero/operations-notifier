@@ -1,6 +1,7 @@
-const {StrKey, xdr} = require('@stellar/stellar-sdk'),
+const {StrKey} = require('@stellar/stellar-sdk'),
     BigNumber = require('bignumber.js'),
     {parseAsset} = require('../util/asset-helper'),
+    {getOperationTypeMembers} = require('../util/operation-types'),
     errors = require('../util/errors'),
     logger = require('../util/logger')
 
@@ -201,7 +202,7 @@ class Storage {
             }
             if (optypes.length > 0) {
                 optypes = optypes.map(v => parseInt(v))
-                const validOpTypes = new Set(Object.values(xdr.OperationType._members).map(m => m.value))
+                const validOpTypes = new Set(getOperationTypeMembers().map(m => m.value))
                 if (optypes.some(v => isNaN(v) || !validOpTypes.has(v)))
                     return {error: errors.validationError('operation_types', `Invalid operation type specified. Parameter operation_types should be an array of integers matching existing operation types (valid values: ${[...validOpTypes].sort((a, b) => a - b).join(', ')}).`)}
                 subscription.operation_types = optypes

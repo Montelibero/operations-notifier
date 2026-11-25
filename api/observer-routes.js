@@ -1,6 +1,6 @@
 const pkgInfo = require('../package'),
     {signer} = require('../util/signer'),
-    {xdr} = require('@stellar/stellar-sdk'),
+    {getOperationTypeMembers} = require('../util/operation-types'),
     observer = require('../logic/observer'),
     storage = require('../logic/storage'),
     {elapsed} = require('../util/elapsed-time'),
@@ -9,7 +9,7 @@ const pkgInfo = require('../package'),
     errors = require('../util/errors')
 
 function getOperationTypes() {
-    return Object.values(xdr.OperationType._members)
+    return getOperationTypeMembers()
         .map(({name, value}) => ({
             type: value,
             name: name,

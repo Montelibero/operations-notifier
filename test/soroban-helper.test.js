@@ -1,4 +1,5 @@
 const expect = require('chai').expect
+const {xdr, StrKey} = require('@stellar/stellar-sdk')
 const {decodeMeta, stringifyBigInts} = require('../util/soroban-helper')
 const fixture = require('./fixtures/soroban-tx-dbf9a5c2.json')
 
@@ -36,6 +37,75 @@ describe('soroban-helper.decodeMeta', function () {
         expect(transferEvent.data).to.equal('10')
         // topics include the contract being invoked as the destination
         expect(transferEvent.topics).to.include('CAFXUALXFPTBTLSRCDSMJXNPSN3AVL2ZPXJUDDHVTUTLRX5SCNP2SISM')
+    })
+
+    it('decodes Protocol 30 events with a muxed contract (W…) address in topics', function () {
+        // TransactionMetaV3 built with stellar-sdk 17: contract event topics [transfer, G…, W…], data {amount, to_muxed_id}
+        const fixture = require('./fixtures/protocol30-muxed-contract.json')
+        const {events, return_value} = decodeMeta(fixture.metaXdr, 0)
+        expect(return_value).to.equal(true)
+        expect(events).to.be.an('array').with.length(1)
+        const [ev] = events
+        expect(ev.type).to.equal('contract')
+        expect(ev.contract).to.equal(fixture.cAddress)
+        expect(ev.topics).to.deep.equal(['transfer', fixture.gAddress, fixture.wAddress])
+        expect(ev.data).to.deep.equal({amount: '5000000', to_muxed_id: '123456789'})
+    })
+
+    it('decodes TransactionMetaV3 with a system event that has no contract id', function () {
+        const ext = xdr.ExtensionPoint.v0()
+        const transferEvent = new xdr.ContractEvent({
+            ext,
+            contractId: new xdr.ContractId(Buffer.alloc(32, 7)),
+            type: xdr.ContractEventType.fromName('contract'),
+            body: xdr.ContractEventBody.v0(new xdr.ContractEventV0({
+                topics: [xdr.ScVal.scvSymbol('transfer'), xdr.ScVal.scvU64(10n)],
+                data: xdr.ScVal.scvMap([])
+            }))
+        })
+        const systemEvent = new xdr.ContractEvent({
+            ext,
+            contractId: null,
+            type: xdr.ContractEventType.fromName('system'),
+            body: xdr.ContractEventBody.v0(new xdr.ContractEventV0({
+                topics: [xdr.ScVal.scvSymbol('fee')],
+                data: xdr.ScVal.scvI128(new xdr.Int128Parts({hi: 0n, lo: 12340n}))
+            }))
+        })
+        const meta = xdr.TransactionMeta.v3(new xdr.TransactionMetaV3({
+            ext,
+            txChangesBefore: [],
+            operations: [new xdr.OperationMeta({changes: []})],
+            txChangesAfter: [],
+            sorobanMeta: new xdr.SorobanTransactionMeta({
+                ext: xdr.SorobanTransactionMetaExt.v0(),
+                consumedContractDataSize: 0n,
+                consumedContractDataEntries: 0n,
+                consumedEventSize: 10n,
+                consumedEventsCount: 2n,
+                returnValue: xdr.ScVal.scvBool(true),
+                events: [transferEvent, systemEvent],
+                diagnosticEvents: [],
+                rentCharged: 0n
+            })
+        }))
+        const {events, return_value} = decodeMeta(meta.toXdr('base64'), 0)
+        expect(return_value).to.equal(true)
+        expect(events).to.have.length(2)
+        expect(events[0]).to.deep.equal({
+            type: 'contract',
+            contract: StrKey.encodeContract(Buffer.alloc(32, 7)),
+            topics: ['transfer', '10'],
+            data: {}
+        })
+        expect(events[1]).to.deep.equal({
+            type: 'system',
+            contract: null,
+            topics: ['fee'],
+            data: '12340'
+        })
+        // v3 has no per-operation events: a different op index yields the same list
+        expect(decodeMeta(meta.toXdr('base64'), 5).events).to.have.length(2)
     })
 
     it('returns null fields on empty input', function () {
