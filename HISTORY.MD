@@ -1,3 +1,18 @@
+0.13.0 / 2026-11-26
+==================
+
+* Liquidity pool operations become matchable by asset: the notifier keeps the asset pair of every
+  pool it has seen (MongoDB collection `liquidity_pool` + in-memory cache, written once — the pair
+  never changes) and attaches `assets`/`fee` to `liquidity_pool_deposit`, `liquidity_pool_withdraw`
+  and pool share trustlines, `pool_assets` to pool trades. Pool share trustlines carry the pair in
+  the envelope (registered for free); other unknown pools are resolved with a single
+  `GET /liquidity_pools/{id}` request per pool, retried later when not available.
+* Fix: a pool share trustline was normalized as XLM (`asset_type: 0`); it is
+  `{"asset_type": 3, "liquidity_pool_id": "..."}` now (Horizon's `pool_share`).
+* Fix (v2 only): an XLM asset subscription (`asset_type: 0`) was a catch-all because of a falsy
+  check; v2 subscriptions really filter by XLM, v1 keeps the legacy behavior.
+* `transaction.ledger` is included in the webhook payload.
+
 0.12.0 / 2026-11-26
 ==================
 

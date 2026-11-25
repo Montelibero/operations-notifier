@@ -241,6 +241,45 @@ describe('TransactionWatcher', function () {
         expect(horizonPool.listenerCount('switch')).to.equal(before)
     })
 
+    function depositTransaction() {
+        clock.restore() // real SDK work
+        const sdk = require('@stellar/stellar-sdk')
+        const src = sdk.Keypair.random()
+        const G = src.publicKey()
+        const poolId = 'ab'.repeat(32)
+        const tx = new sdk.TransactionBuilder(new sdk.Account(G, '1'), {fee: '100', networkPassphrase: sdk.Networks.PUBLIC})
+            .addOperation(sdk.Operation.liquidityPoolDeposit({liquidityPoolId: poolId, maxAmountA: '1', maxAmountB: '1', minPrice: '0.5', maxPrice: '2'}))
+            .setTimeout(0).build()
+        return {rawTx: {hash: 'pooldead', ledger: 65665000, paging_token: '1', envelope_xdr: tx.toXDR(), result_xdr: '', memo_type: 'none'}, G, poolId}
+    }
+
+    it('enriches liquidity pool operations before matching and queueing', async function () {
+        const {rawTx, G, poolId} = depositTransaction()
+        const subscription = {id: 'sub1', account: G, reaction_url: 'http://x', filter_version: 2}
+        observer.subscriptionIndex.findMatches.returns([subscription])
+        sinon.stub(horizonPool, 'call').withArgs(sinon.match({path: `/liquidity_pools/${poolId}`})).resolves({
+            id: poolId, fee_bp: 30, reserves: [{asset: 'native', amount: '1'}, {asset: `USD:${G}`, amount: '2'}]
+        })
+        await watcher.processTransaction(rawTx)
+        expect(observer.notifier.createNotifications.calledOnce).to.equal(true)
+        const [notification] = observer.notifier.createNotifications.firstCall.args[0]
+        expect(notification.subscriptions).to.deep.equal(['sub1'])
+        expect(notification.payload.assets).to.deep.equal([{asset_type: 0}, {asset_type: 1, asset_code: 'USD', asset_issuer: G}])
+        expect(notification.payload.fee).to.equal(30)
+        expect(watcher.getStatus().skippedTransactions).to.equal(0)
+    })
+
+    it('still processes the transaction when liquidity pool enrichment fails', async function () {
+        const {rawTx, G} = depositTransaction()
+        observer.subscriptionIndex.findMatches.returns([{id: 'sub1', account: G, reaction_url: 'http://x'}])
+        sinon.stub(require('../logic/liquidity-pools'), 'enrichTransaction').rejects(new Error('pool lookup exploded'))
+        await watcher.processTransaction(rawTx)
+        expect(observer.notifier.createNotifications.calledOnce).to.equal(true)
+        const [notification] = observer.notifier.createNotifications.firstCall.args[0]
+        expect(notification.payload.type).to.equal('liquidity_pool_deposit')
+        expect(notification.payload).to.not.have.property('assets')
+    })
+
     it('counts transactions skipped because of unparseable envelopes', async function () {
         expect(watcher.getStatus().skippedTransactions).to.equal(0)
         await watcher.processTransaction({hash: 'badbeef', ledger: 42, envelope_xdr: 'AAAA', paging_token: '1'})

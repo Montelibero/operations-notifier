@@ -57,6 +57,23 @@ class StorageProvider {
     }
 
     /**
+     * Load liquidity pools by ids.
+     * @param {string[]} ids - pool ids (hex)
+     * @returns {Promise<Object[]>} {pool_id, assets, fee}
+     */
+    fetchLiquidityPools(ids) {
+        notImplemented()
+    }
+
+    /**
+     * Persist a liquidity pool (its asset pair never changes).
+     * @param {Object} pool - {pool_id, assets, fee, source}
+     */
+    saveLiquidityPool(pool) {
+        notImplemented()
+    }
+
+    /**
      * Persist subscription to the database
      * @param subscription
      */

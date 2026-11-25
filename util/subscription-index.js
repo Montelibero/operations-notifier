@@ -166,7 +166,7 @@ class SubscriptionIndex {
      * @param {Object} subscription
      */
     _cacheAsset(subscription) {
-        if (subscription.asset_type && !subscription._cachedAsset) {
+        if (subscription.asset_type !== undefined && subscription.asset_type !== null && !subscription._cachedAsset) {
             subscription._cachedAsset = parseAsset(subscription)
         }
     }

@@ -360,6 +360,25 @@ the notifier sums `amount_bought` only for trades whose `asset_bought` matches
 
 ## 6 | change_trust
 
+Trustline на долю ликвидити-пула (создание/вход в пул) отдаётся как `asset_type: 3` с
+`liquidity_pool_id`, парой активов пула `assets` и комиссией `fee`:
+
+```json
+{
+  "operation": {
+    "type_i": 6,
+    "type": "change_trust",
+    "asset": {"asset_type": 3, "liquidity_pool_id": "3fdb3afae74f0db26bd1b8cbf292743df687dde6d037cbf4790cba37dc63a110"},
+    "assets": [{"asset_type": 0}, {"asset_type": 1, "asset_code": "USDC", "asset_issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"}],
+    "fee": 30,
+    "limit": "1000.0000000",
+    "account": "GAFI2AOGBCKV7DWK2N77O34RD52C6O6QGGVEV5CEVFQTCHOOI3VOKP7G"
+  }
+}
+```
+
+Обычная trustline:
+
 ```json
 {
   "operation": {
@@ -820,6 +839,8 @@ SDK отдаёт семь отдельных типов операции (`revok
     "type": "liquidity_pool_deposit",
     "type_i": 22,
     "liquidityPoolId": "3fdb3afae74f0db26bd1b8cbf292743df687dde6d037cbf4790cba37dc63a110",
+    "assets": [{"asset_type": 0}, {"asset_type": 1, "asset_code": "USDC", "asset_issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"}],
+    "fee": 30,
     "maxAmountA": "0.2741707",
     "maxAmountB": "10.0000000",
     "minPrice": "0.02714289930000000005",

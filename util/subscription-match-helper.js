@@ -10,7 +10,9 @@ const {parseAsset, assetsEqual} = require('./asset-helper')
  *     account matches `from` (clawback), `trustor` (set_trustline_flags), `sponsoredId`
  *     (begin_sponsoring_future_reserves), claimants of create_claimable_balance, and the
  *     (normalized) destination of path payments and muxed payments;
- *     asset matches the intermediate `path` assets and the assets of the trades;
+ *     asset matches the intermediate `path` assets, the assets of the trades and the asset pair of
+ *     the liquidity pool (`assets` on deposit/withdraw/pool-share trustline, `pool_assets` on pool trades);
+ *     an XLM asset subscription (`asset_type: 0`) really filters by XLM (in v1 it was a catch-all);
  *     memo compares the transaction memo value (v1 never matched on memo; such subscriptions need to be recreated as v2).
  *
  * Existing subscriptions keep their behavior: a subscription without `filter_version` is v1.
@@ -72,6 +74,9 @@ function assetMatches(subscription, operation, version) {
     if (version >= 2) {
         if ((operation.path || []).some(asset => assetsEqual(assetToFilter, asset))) return true
         if ((operation.trades || []).some(trade => assetsEqual(assetToFilter, trade.asset_sold) || assetsEqual(assetToFilter, trade.asset_bought))) return true
+        // liquidity pools: the pair of the pool on deposit/withdraw/pool-share trustlines and on pool trades
+        if ((operation.assets || []).some(asset => assetsEqual(assetToFilter, asset))) return true
+        if ((operation.trades || []).some(trade => (trade.pool_assets || []).some(asset => assetsEqual(assetToFilter, asset)))) return true
     }
     return false
 }
@@ -91,7 +96,10 @@ function matches(subscription, operation) {
     if (subscription.operation_types && subscription.operation_types.length && !subscription.operation_types.includes(operation.type_i)) return false
     if (subscription.contract && operation.contract !== subscription.contract) return false
     if (subscription.account && !accountMatches(subscription, operation, version)) return false
-    if (subscription.asset_type && !assetMatches(subscription, operation, version)) return false
+    // v1 treated asset_type 0 (XLM) as "no asset filter" because of the falsy check — kept verbatim;
+    // v2 applies the XLM asset filter like any other
+    const hasAssetRule = version < 2 ? !!subscription.asset_type : subscription.asset_type !== undefined && subscription.asset_type !== null
+    if (hasAssetRule && !assetMatches(subscription, operation, version)) return false
     return true
 }
 

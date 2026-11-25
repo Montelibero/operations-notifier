@@ -7,6 +7,8 @@ const {StrKey} = require('@stellar/stellar-sdk'),
     logger = require('../util/logger')
 
 let lastIngested,
+    // pool id → {pool_id, assets, fee}; the pair of assets never changes, so entries live for the process lifetime
+    liquidityPoolCache = new Map(),
     storageProviders = {
         mongodb: '../persistence-layer/mongodb-storage-provider',
         memory: '../persistence-layer/memory-storage-provider'
@@ -113,6 +115,37 @@ class Storage {
 
     saveSubscription(subscription) {
         return this.provider.saveSubscription(subscription)
+    }
+
+    /**
+     * Known liquidity pools by ids (in-memory cache, then the storage provider).
+     * @param {string[]} ids
+     * @returns {Promise<Object[]>} found pools {pool_id, assets, fee}
+     */
+    fetchLiquidityPools(ids) {
+        const found = [], missing = []
+        for (const id of ids) {
+            if (liquidityPoolCache.has(id)) found.push(liquidityPoolCache.get(id))
+            else if (!missing.includes(id)) missing.push(id)
+        }
+        if (!missing.length) return Promise.resolve(found)
+        return this.provider.fetchLiquidityPools(missing)
+            .then(pools => {
+                for (const pool of pools || []) {
+                    liquidityPoolCache.set(pool.pool_id, pool)
+                    found.push(pool)
+                }
+                return found
+            })
+    }
+
+    /**
+     * Persist a liquidity pool and cache it.
+     * @param {Object} pool - {pool_id, assets, fee, source}
+     */
+    saveLiquidityPool(pool) {
+        liquidityPoolCache.set(pool.pool_id, pool)
+        return this.provider.saveLiquidityPool(pool)
     }
 
     /**

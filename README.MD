@@ -579,6 +579,8 @@ rules (`1`); new subscriptions get `2` by default:
 | … the value of a `manage_data` entry that equals the account | ✓ | ✓ |
 | **asset** matches `asset` or `source_asset` of the operation | ✓ | ✓ |
 | … the intermediate assets in `path` and the `asset_sold`/`asset_bought` of `trades` | – | ✓ |
+| … the asset pair of a liquidity pool: `assets` on `liquidity_pool_deposit`/`liquidity_pool_withdraw` and on a pool share trustline, `pool_assets` on pool trades | – | ✓ |
+| an **XLM** asset subscription (`asset_code: XLM`) really filters by XLM | catch-all (any operation) | ✓ |
 | **memo** matches the transaction memo value (hash/return memos may be given as hex) | never matched (such subscriptions need to be recreated as v2) | ✓ |
 | **contract**, **operation_types** | ✓ | ✓ |
 
@@ -586,6 +588,26 @@ Addresses in the webhook payload follow the Horizon convention: `destination`,
 `account`, `from` (clawback) are always the base `G…` account; muxed addresses also
 carry `<field>_muxed` (`M…`) and `<field>_muxed_id` (`destination_muxed`,
 `account_muxed`, `from_muxed`, `source_muxed` of the transaction).
+
+#### Liquidity pools
+
+A transaction envelope carries only the pool id for deposits, withdrawals and pool
+trades, so the notifier keeps the pair of assets of every pool it has seen
+(MongoDB collection `liquidity_pool`, in-memory cache; `pool_id → assets, fee`) and
+attaches it to the operations before matching:
+
+- `liquidity_pool_deposit` / `liquidity_pool_withdraw` / pool share trustline →
+  `assets: [...]`, `fee`;
+- `trades[]` of type `liquidity_pool` → `pool_assets: [...]`.
+
+A pool share trustline (`change_trust` to a pool share, i.e. creating or joining a
+pool) carries the pool parameters in the envelope itself — such pools are registered
+for free. For any other unknown pool id the notifier makes a single
+`GET /liquidity_pools/{id}` request (cached forever: the pair never changes), so after
+the warm-up the number of extra requests is one per new pool on the network. When the
+pool is not available yet, the operation is still delivered without `assets` and the
+lookup is retried on the next sighting. A pool share is reported as
+`{"asset_type": 3, "liquidity_pool_id": "..."}` (previously it was mistaken for XLM).
 
 Note: if authentication is enabled, include a `nonce` param in the request body
 that is greater than the previous nonce used for this public key.

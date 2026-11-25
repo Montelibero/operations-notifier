@@ -13,6 +13,7 @@ const repository = {
     subscriptions: [],
     notifications: [],
     users: [],
+    liquidityPools: [],
     lastIngestedTx: null
 }
 
@@ -92,6 +93,17 @@ class MemoryStorageProvider extends StorageProvider {
         repository.subscriptions = []
         repository.notifications = []
         return Promise.resolve()
+    }
+
+    fetchLiquidityPools(ids) {
+        return Promise.resolve(repository.liquidityPools.filter(p => ids.includes(p.pool_id)))
+    }
+
+    saveLiquidityPool(pool) {
+        if (!repository.liquidityPools.some(p => p.pool_id === pool.pool_id)) {
+            repository.liquidityPools.push({...pool})
+        }
+        return Promise.resolve(pool)
     }
 
     updateLastIngestedTx(ingestedTxSequence) {

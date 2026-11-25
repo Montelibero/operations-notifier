@@ -9,7 +9,8 @@ mongoose.connection.on('error', e => logger.error(e))
 let connectionInitialized = false,
     Subscription,
     TxIngestionCursor,
-    Notification
+    Notification,
+    LiquidityPool
 
 function toObjectId(id) {
     if (typeof id === 'string') {
@@ -29,6 +30,7 @@ class MongoDBStorageProvider extends StorageProvider {
             Subscription = require('./models/subscription-db-model')
             TxIngestionCursor = require('./models/tx-ingestion-cursor-db-model')
             Notification = require('./models/notification-db-model')
+            LiquidityPool = require('./models/liquidity-pool-db-model')
         })
     }
 
@@ -85,6 +87,20 @@ class MongoDBStorageProvider extends StorageProvider {
             Subscription.deleteMany({}),
             Notification.deleteMany({})
         ])
+    }
+
+    fetchLiquidityPools(ids) {
+        return LiquidityPool.find({_id: {$in: ids}}).lean()
+            .then(pools => pools.map(p => ({pool_id: p._id, assets: p.assets, fee: p.fee, source: p.source})))
+    }
+
+    saveLiquidityPool(pool) {
+        return LiquidityPool.findOneAndUpdate(
+            {_id: pool.pool_id},
+            {$setOnInsert: {assets: pool.assets, fee: pool.fee, source: pool.source}},
+            {upsert: true, new: true}
+        ).lean()
+            .then(p => p ? {pool_id: p._id, assets: p.assets, fee: p.fee, source: p.source} : null)
     }
 
     updateLastIngestedTx(ingestedTxSequence) {

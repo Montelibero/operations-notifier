@@ -1,6 +1,6 @@
-const {TransactionBuilder, xdr, StrKey, scValToNative} = require('@stellar/stellar-sdk'),
+const {TransactionBuilder, xdr, StrKey, scValToNative, getLiquidityPoolId} = require('@stellar/stellar-sdk'),
     BigNumber = require('bignumber.js'),
-    {parseAsset, nativeAsset} = require('../util/asset-helper'),
+    {parseAsset, nativeAsset, poolShareAsset, isPoolShareAsset} = require('../util/asset-helper'),
     {stringifyBigInts} = require('../util/soroban-helper'),
     config = require('../models/config'),
     logger = require('../util/logger')
@@ -66,6 +66,13 @@ function accountFields(name, address) {
 
 function normalizeAsset(asset) {
     if (!asset) return null
+    // a pool share: `LiquidityPoolId` (e.g. revoke_trustline_sponsorship) knows the id already,
+    // while a change_trust carries the pool parameters (assetA, assetB, fee) in the envelope
+    if (typeof asset.getAssetType === 'function' && asset.getAssetType() === 'liquidity_pool_shares') {
+        if (typeof asset.getLiquidityPoolId === 'function') return poolShareAsset(asset.getLiquidityPoolId())
+        if (!asset.assetA || !asset.assetB) return null // unknown pool share form: nothing to match by
+        return poolShareAsset(Buffer.from(getLiquidityPoolId('constant_product', asset)).toString('hex'))
+    }
     return parseAsset({
         asset_code: asset.code,
         asset_issuer: asset.issuer
@@ -409,13 +416,23 @@ function normalizeOperation(operation) {
                 res.signer_weight = weight
             }
             return res
-        case 'changeTrust':
-            return {
+        case 'changeTrust': {
+            const res = {
                 type_i: 6,
                 type: 'change_trust',
                 asset: normalizeAsset(operation.line),
                 limit: operation.limit
             }
+            // pool share trustline (creating/joining a liquidity pool): the pair of the pool is known from the envelope
+            if (isPoolShareAsset(res.asset) && typeof operation.line?.getAssetType === 'function' && operation.line.getAssetType() === 'liquidity_pool_shares') {
+                const poolAssets = [normalizeAsset(operation.line.assetA), normalizeAsset(operation.line.assetB)].filter(Boolean)
+                if (poolAssets.length === 2) {
+                    res.assets = poolAssets
+                    res.fee = operation.line.fee
+                }
+            }
+            return res
+        }
         case 'allowTrust':
             return {
                 type_i: 7,
@@ -683,6 +700,7 @@ function parseTransaction(transaction) {
         source: txSource.address,
         ...(txSource.muxed ? {source_muxed: txSource.muxed, source_muxed_id: txSource.muxed_id} : {}),
         paging_token: transaction.paging_token,
+        ledger: transaction.ledger,
         source_account_sequence: transaction.source_account_sequence,
         created_at: transaction.created_at,
         memo: processMemo(xdrTx.memo),
@@ -700,7 +718,15 @@ function parseTransaction(transaction) {
     return {
         id: txDetails.hash,
         details: txDetails,
-        operations: xdrTx.operations.map((op, i) => processOperation(op, txDetails, i)).filter(op => !!op)
+        operations: xdrTx.operations.map((op, i) => {
+            try {
+                return processOperation(op, txDetails, i)
+            } catch (e) {
+                // one broken operation must not drop the whole transaction
+                logger.warn(`Failed to normalize ${op.type} #${i} of transaction ${transaction.hash}: ${e.message}`)
+                return null
+            }
+        }).filter(op => !!op)
         //TODO: retrieve effects from transaction.result_xdr
     }
 }

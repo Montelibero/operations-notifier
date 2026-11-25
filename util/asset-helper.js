@@ -8,6 +8,10 @@ const {StrKey} = require('@stellar/stellar-sdk')
  */
 function parseAsset(src, prefix = '') {
     if (!src) return null
+    if (src[prefix + 'asset_type'] === POOL_SHARE_TYPE) {
+        const res = poolShareAsset(src[prefix + 'liquidity_pool_id'])
+        return isValidAsset(res) ? res : null
+    }
     const res = {};
 
     ['asset_type', 'asset_code', 'asset_issuer'].forEach(key => {
@@ -40,8 +44,15 @@ function parseAsset(src, prefix = '') {
  * @param {Object} asset - an asset to validate
  * @returns {boolean}
  */
+const POOL_SHARE_TYPE = 3
+
+function isPoolShareAsset(asset) {
+    return !!asset && asset.asset_type === POOL_SHARE_TYPE
+}
+
 function isValidAsset(asset) {
     if (asset.asset_type === 0 && !asset.asset_code && !asset.asset_issuer) return true
+    if (isPoolShareAsset(asset)) return /^[0-9a-f]{64}$/.test(asset.liquidity_pool_id || '')
     if (!StrKey.isValidEd25519PublicKey(asset.asset_issuer)) return false
     if (!asset.asset_code) return false
     if (!/^[a-zA-Z0-9]{1,12}$/.test(asset.asset_code)) return false
@@ -58,7 +69,17 @@ function isValidAsset(asset) {
 function assetsEqual(asset1, asset2) {
     if (!asset1 || !asset2 || !isValidAsset(asset1) || !isValidAsset(asset2)) return false
     if (asset1.asset_type !== asset2.asset_type) return false
+    if (isPoolShareAsset(asset1)) return asset1.liquidity_pool_id === asset2.liquidity_pool_id
     return asset1.asset_code === asset2.asset_code && asset1.asset_issuer === asset2.asset_issuer
+}
+
+/**
+ * Pool share asset descriptor (a liquidity pool position).
+ * @param {string} poolId - 64-char hex pool id
+ * @returns {Object}
+ */
+function poolShareAsset(poolId) {
+    return {asset_type: POOL_SHARE_TYPE, liquidity_pool_id: poolId}
 }
 
 /**
@@ -84,5 +105,8 @@ module.exports = {
     isValidAsset,
     normalizeAssetType,
     nativeAsset,
-    assetsEqual
+    poolShareAsset,
+    isPoolShareAsset,
+    assetsEqual,
+    POOL_SHARE_TYPE
 }

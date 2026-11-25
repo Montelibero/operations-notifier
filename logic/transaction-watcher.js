@@ -3,6 +3,7 @@ const config = require('../models/config'),
     {horizonPool} = stellarConnector,
     {parseTransaction} = require('./stream-processor'),
     sorobanRpc = require('./soroban-rpc-client'),
+    liquidityPools = require('./liquidity-pools'),
     {decodeMeta} = require('../util/soroban-helper'),
     storage = require('./storage'),
     logger = require('../util/logger'),
@@ -223,98 +224,105 @@ class TransactionWatcher {
      * @param {Object} rawTx - Raw transaction from Horizon
      * @returns {Promise}
      */
-    processTransaction(rawTx) {
-        return new Promise((resolve, reject) => {
-            const tx = parseTransaction(rawTx),
-                notifications = [],
-                relevantSubscriptions = new Set()
+    async processTransaction(rawTx) {
+        const tx = parseTransaction(rawTx)
 
-            if (!tx) { // Failed to parse transaction (unknown XDR or malformed envelope): count it, never fail silently
-                this.skippedTransactions = (this.skippedTransactions || 0) + 1
-                this.lastSkipped = {
-                    hash: rawTx && rawTx.hash,
-                    ledger: rawTx && rawTx.ledger,
-                    at: new Date().toISOString()
-                }
-                return resolve()
+        if (!tx) { // Failed to parse transaction (unknown XDR or malformed envelope): count it, never fail silently
+            this.skippedTransactions = (this.skippedTransactions || 0) + 1
+            this.lastSkipped = {
+                hash: rawTx && rawTx.hash,
+                ledger: rawTx && rawTx.ledger,
+                at: new Date().toISOString()
             }
+            return
+        }
 
-            const txLedger = rawTx && rawTx.ledger
-            if (typeof this.lastLedgerSeen === 'number' && typeof txLedger === 'number') {
-                const lag = this.lastLedgerSeen - txLedger
-                if (lag > 20) {
-                    const now = Date.now()
-                    if (!this.lastLagLogAt || now - this.lastLagLogAt > 5000) {
-                        logger.info(`Lagging by ${lag} ledgers (tx ledger ${txLedger}, latest ${this.lastLedgerSeen}).`)
-                        this.lastLagLogAt = now
-                    }
-                }
-            }
+        // attach liquidity pool asset pairs (cached, one Horizon lookup per unknown pool) before matching
+        try {
+            await liquidityPools.enrichTransaction(tx)
+        } catch (e) {
+            logger.warn(`Liquidity pool enrichment failed for ${tx.details.hash}: ${e.message}`)
+        }
+        await this._processParsedTransaction(tx)
+    }
 
-            for (const operation of tx.operations) {
-                // Create a notification
-                let notification = {
-                    payload: operation,
-                    subscriptions: []
-                }
-                // Use index for O(1) candidate lookup instead of O(N) linear scan
-                const matchedSubscriptions = this.observer.subscriptionIndex.findMatches(operation)
-                for (const subscription of matchedSubscriptions) {
-                    // Associate a subscription with current notification
-                    notification.subscriptions.push(subscription.id)
-                    // Will use it once notifications are persisted
-                    relevantSubscriptions.add(subscription)
-                    // Mark subscription as ready to be processed
-                    subscription.processed = false
-                }
-
-                // Process a notification if at least one match was found
-                if (notification.subscriptions.length) {
-                    notifications.push(notification)
+    /**
+     * Match the operations of an already parsed and enriched transaction and queue the notifications.
+     * Never rejects: a failure here must not stop the processing of other transactions.
+     * @param {Object} tx - parsed transaction
+     */
+    async _processParsedTransaction(tx) {
+        const notifications = [],
+            relevantSubscriptions = new Set()
+        const txLedger = tx.details.ledger
+        if (typeof this.lastLedgerSeen === 'number' && typeof txLedger === 'number') {
+            const lag = this.lastLedgerSeen - txLedger
+            if (lag > 20) {
+                const now = Date.now()
+                if (!this.lastLagLogAt || now - this.lastLagLogAt > 5000) {
+                    logger.info(`Lagging by ${lag} ledgers (tx ledger ${txLedger}, latest ${this.lastLedgerSeen}).`)
+                    this.lastLagLogAt = now
                 }
             }
+        }
 
+        for (const operation of tx.operations) {
+            // Create a notification
+            let notification = {
+                payload: operation,
+                subscriptions: []
+            }
+            // Use index for O(1) candidate lookup instead of O(N) linear scan
+            const matchedSubscriptions = this.observer.subscriptionIndex.findMatches(operation)
+            for (const subscription of matchedSubscriptions) {
+                // Associate a subscription with current notification
+                notification.subscriptions.push(subscription.id)
+                // Will use it once notifications are persisted
+                relevantSubscriptions.add(subscription)
+                // Mark subscription as ready to be processed
+                subscription.processed = false
+            }
+
+            // Process a notification if at least one match was found
+            if (notification.subscriptions.length) {
+                notifications.push(notification)
+            }
+        }
+
+        try {
             // Soroban meta enrichment: fetch resultMetaXdr via Soroban RPC only when
             // at least one invoke_host_function op has a matching subscription, then
             // decode events and return_value and attach them to the operation payload.
-            const enrichPromise = this._enrichSorobanOps(tx, notifications)
+            await this._enrichSorobanOps(tx, notifications)
+            const savedNotifications = (await this.observer.notifier.createNotifications(notifications)) || notifications
 
-            enrichPromise.then(() => this.observer.notifier.createNotifications(notifications))
-                .then(createdNotifications => {
-                    const savedNotifications = createdNotifications || notifications
-                    
-                    // Диагностика обработки
-                    if (this.processTxCount === undefined) this.processTxCount = 0;
-                    this.processTxCount++;
-                    
-                    if (this.processTxCount % 20 === 0) {
-                        logger.debug(`Processed ${this.processTxCount} transactions, latest token: ${tx.details.paging_token.substring(0, 8)}...`)
+            if (this.processTxCount === undefined) this.processTxCount = 0
+            this.processTxCount++
+            if (this.processTxCount % 20 === 0) {
+                logger.debug(`Processed ${this.processTxCount} transactions, latest token: ${tx.details.paging_token.substring(0, 8)}...`)
+            }
+
+            // Thread-safe update of highest paging token
+            this.updateHighestPagingToken(tx.details.paging_token)
+
+            // Iterate through processed subscriptions
+            for (let subscription of relevantSubscriptions) {
+                // Cache notifications directly inside the subscription
+                if (!subscription.notifications) {
+                    subscription.notifications = new Set()
+                }
+                for (let notification of savedNotifications) {
+                    if (notification.subscriptions.some(s => s == subscription.id)) {
+                        subscription.notifications.add(notification)
                     }
-                    
-                    // Thread-safe update of highest paging token
-                    this.updateHighestPagingToken(tx.details.paging_token)
+                }
+            }
 
-                    // Iterate through processed subscriptions
-                    for (let subscription of relevantSubscriptions) {
-                        // Cache notifications directly inside the subscription
-                        if (!subscription.notifications) {
-                            subscription.notifications = new Set()
-                        }
-                        for (let notification of savedNotifications) {
-                            if (notification.subscriptions.some(s => s == subscription.id)) {
-                                subscription.notifications.add(notification)
-                            }
-                        }
-                    }
-
-                    this.observer.notifier.startNewNotifierThread()
-                    resolve()
-                })
-                .catch(err => {
-                    console.error(err)
-                    resolve() // Don't reject, continue processing other transactions
-                })
-        })
+            this.observer.notifier.startNewNotifierThread()
+        } catch (err) {
+            console.error(err)
+            // Don't reject, continue processing other transactions
+        }
     }
 
     /**
