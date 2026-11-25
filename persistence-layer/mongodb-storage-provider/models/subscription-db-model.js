@@ -11,6 +11,7 @@ const subscriptionSchema = new Schema({
     memo: {type: String, index: true},
     contract: {type: String, index: true},
     operation_types: {type: [Number], index: true},
+    filter_version: {type: Number, default: 1},
     reaction_url: {type: String},
     delivery_failures: {type: Number, default: 0},
     lost_notifications: {type: Number, default: 0},

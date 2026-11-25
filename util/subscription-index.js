@@ -1,5 +1,5 @@
 const {parseAsset} = require('./asset-helper')
-const {matches} = require('./subscription-match-helper')
+const {matches, referencedAccounts, dataValueToString, CURRENT_FILTER_VERSION} = require('./subscription-match-helper')
 
 /**
  * Index subscriptions by account and contract for O(1) lookup instead of O(N) linear scan.
@@ -128,9 +128,10 @@ class SubscriptionIndex {
             }
         }
 
-        // Destination (payments, path_payments, etc.)
-        if (operation.destination) {
-            const set = this.accountIndex.get(operation.destination)
+        // Every account referenced by the operation in any role: destination (incl. path payments), clawback `from`,
+        // trustline `trustor`, sponsored account, claimants (the v1-only rules are applied later by matches())
+        for (const account of referencedAccounts(operation, CURRENT_FILTER_VERSION)) {
+            const set = this.accountIndex.get(account)
             if (set) {
                 for (const sub of set) candidates.add(sub)
             }
@@ -138,9 +139,7 @@ class SubscriptionIndex {
 
         // manage_data (type_i=10): value may contain a subscribed account
         if (operation.type_i === 10 && operation.value) {
-            const valueStr = Buffer.isBuffer(operation.value)
-                ? operation.value.toString('utf8')
-                : String(operation.value)
+            const valueStr = dataValueToString(operation.value)
             const set = this.accountIndex.get(valueStr)
             if (set) {
                 for (const sub of set) candidates.add(sub)

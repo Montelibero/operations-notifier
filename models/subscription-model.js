@@ -16,6 +16,12 @@ class SubscriptionModel extends Model {
      */
     status = 0
     /**
+     * Version of the filter rules applied to this subscription (see util/subscription-match-helper.js).
+     * Missing/1 — original rules, 2 — extended rules. Existing subscriptions are never upgraded implicitly
+     * (records without the field are read as 1 by the matcher).
+     */
+    filter_version = require('../util/subscription-match-helper').CURRENT_FILTER_VERSION
+    /**
      * Account to track
      */
     account
@@ -78,3 +84,5 @@ class SubscriptionModel extends Model {
 }
 
 module.exports = SubscriptionModel
+
+module.exports.CURRENT_FILTER_VERSION = require('../util/subscription-match-helper').CURRENT_FILTER_VERSION

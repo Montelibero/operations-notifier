@@ -97,6 +97,24 @@ describe('API', function () {
                 expect(res.status).to.equal(200)
             })
 
+            it('it should deduplicate subscriptions of an authenticated user (ed25519 and token auth)', async () => {
+                const postSigned = async (data) => {
+                    const nonce = Date.now()
+                    const body = {...data, nonce}
+                    return axiosInstance.post('/api/subscription', body, {
+                        headers: {authorization: `${newUserKeyPair.publicKey()}.${signData(newUserKeyPair, encodeUrlParams(body))}`}
+                    })
+                }
+                const data = {reaction_url: 'http://fake.url/dedup-user', operation_types: [1]}
+                const first = await postSigned(data)
+                const second = await postSigned(data)
+                expect(first.status).to.equal(200)
+                expect(second.data.id).to.equal(first.data.id) // the same owner and filters → the same subscription
+                // the same filters owned by the admin token are a different subscription
+                const admin = await axiosInstance.post('/api/subscription', data, {headers: {authorization: config.adminAuthenticationToken}})
+                expect(admin.data.id).to.not.equal(first.data.id)
+            })
+
             it('it should return existing subscription on duplicate POST (idempotent)', async () => {
                 const data = {
                     reaction_url: 'http://fake.url/dedup-test',
@@ -214,7 +232,7 @@ describe('API', function () {
                 })
                 expect(res.status).to.equal(200)
                 expect(res.data).to.be.an('array')
-                expect(res.data.length).to.be.eql(11)
+                expect(res.data.length).to.be.eql(13)
                 subscriptions = res.data
             })
 
@@ -228,7 +246,7 @@ describe('API', function () {
                 })
                 expect(res.status).to.equal(200)
                 expect(res.data).to.be.an('array')
-                expect(res.data.length).to.be.eql(1)
+                expect(res.data.length).to.be.eql(2)
             })
 
             it('it should fail to GET subscription by another\'s id', async () => {
@@ -275,6 +293,58 @@ describe('API', function () {
                 } catch (err) {
                     expect(err.response.status).to.equal(403)
                 }
+            })
+        })
+
+        describe('/POST subscription filter_version', () => {
+            const post = async (data) => axiosInstance.post('/api/subscription', {
+                reaction_url: 'http://fake.url/reaction', account: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN', ...data
+            }, {headers: {authorization: config.adminAuthenticationToken}})
+
+            it('new subscriptions get the current filter version by default', async () => {
+                const res = await post({})
+                expect(res.status).to.equal(200)
+                expect(res.data.filter_version).to.equal(2)
+            })
+
+            it('filter_version 1 keeps the original rules', async () => {
+                const res = await post({filter_version: 1, reaction_url: 'http://fake.url/reaction-v1'})
+                expect(res.status).to.equal(200)
+                expect(res.data.filter_version).to.equal(1)
+            })
+
+            it('rejects unknown filter versions', async () => {
+                for (const value of [3, 0, -1, 'abc', '1.5']) {
+                    try {
+                        await post({filter_version: value, reaction_url: 'http://fake.url/reaction-bad'})
+                        throw new Error('should have failed for ' + value)
+                    } catch (err) {
+                        expect(err.response.status, String(value)).to.equal(400)
+                        expect(JSON.stringify(err.response.data)).to.match(/filter_version/i)
+                    }
+                }
+                // null means "not provided"
+                const res = await post({filter_version: null, reaction_url: 'http://fake.url/reaction-null'})
+                expect(res.data.filter_version).to.equal(2)
+            })
+
+            it('deduplicates a request that carries a pubkey in the body', async () => {
+                const filters = {account: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN', reaction_url: 'http://fake.url/reaction-pubkey'}
+                const first = await post({...filters, pubkey: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN'})
+                const second = await post({...filters, pubkey: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN'})
+                expect(second.data.id).to.equal(first.data.id)
+            })
+
+            it('subscriptions with different filter versions are not duplicates', async () => {
+                const filters = {account: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN', reaction_url: 'http://fake.url/reaction-dedup'}
+                const v1 = await post({...filters, filter_version: 1})
+                const v2 = await post(filters) // defaults to 2
+                expect(v1.status).to.equal(200)
+                expect(v2.status).to.equal(200)
+                expect(v2.data.id).to.not.equal(v1.data.id)
+                expect(v2.data.filter_version).to.equal(2)
+                const again = await post({...filters, filter_version: 1})
+                expect(again.data.id).to.equal(v1.data.id) // still idempotent within the same version
             })
         })
 
@@ -328,6 +398,15 @@ describe('API', function () {
                 expect(res.data.horizon).to.have.length(2)
                 expect(res.data.horizon[1]).to.include({url: 'https://hz2', state: 'down', lag: 2})
                 expect(res.data.sorobanRpc).to.equal(null) // not configured in the test config
+            })
+        })
+
+        describe('/GET status', () => {
+            it('exposes skipped transactions counters', async () => {
+                const res = await axiosInstance.get('/api/status')
+                expect(res.status).to.equal(200)
+                expect(res.data.stream.skippedTransactions).to.equal(0)
+                expect(res.data.stream.lastSkippedTransaction).to.equal(null)
             })
         })
 
@@ -485,6 +564,22 @@ describe('API', function () {
             }
         })
 
+        it('it should deduplicate subscriptions created with a user token', async () => {
+            const data = {reaction_url: 'http://fake.url/dedup-token', operation_types: [1]}
+            const first = await axiosInstance.post('/api/subscription', data, {headers: {authorization: tokenA}})
+            const second = await axiosInstance.post('/api/subscription', data, {headers: {authorization: tokenA}})
+            expect(first.status).to.equal(200)
+            expect(second.data.id).to.equal(first.data.id)
+            const other = await axiosInstance.post('/api/subscription', data, {headers: {authorization: tokenB}})
+            expect(other.data.id).to.not.equal(first.data.id) // another owner → their own subscription
+            // batch: a subscription the user already has is returned as `existing`, not duplicated
+            const batch = [data, {reaction_url: 'http://fake.url/dedup-token-2', operation_types: [1]}]
+            const batchRes = await axiosInstance.post('/api/subscription', batch, {headers: {authorization: tokenA}})
+            expect(batchRes.status).to.equal(200)
+            expect(batchRes.data[0].id).to.equal(first.data.id) // the existing one is returned as is
+            expect(batchRes.data[1].id).to.not.equal(first.data.id) // the new one is created
+        })
+
         it('it should accept a single allowed token and reject others', async () => {
             const previous = config.userTokens
             config.userTokens = [tokenA]
@@ -535,8 +630,8 @@ describe('API', function () {
             })
             expect(res.status).to.equal(200)
             expect(res.data).to.be.an('array')
-            expect(res.data.length).to.equal(1)
-            expect(res.data[0].id).to.equal(tokenASub.id)
+            expect(res.data.length).to.equal(3)
+            expect(res.data.some(s => s.id === tokenASub.id)).to.equal(true)
         })
 
         it('it should forbid deleting another token user subscription', async () => {

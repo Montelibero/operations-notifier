@@ -2,10 +2,66 @@ const {TransactionBuilder, xdr, StrKey, scValToNative} = require('@stellar/stell
     BigNumber = require('bignumber.js'),
     {parseAsset, nativeAsset} = require('../util/asset-helper'),
     {stringifyBigInts} = require('../util/soroban-helper'),
-    config = require('../models/config')
+    config = require('../models/config'),
+    logger = require('../util/logger')
 
 function stroopsToAmount(stroops) {
     return new BigNumber(stroops).dividedBy(10000000).toFixed(7)
+}
+
+/**
+ * Normalize a possibly muxed account address (G… or M… as exposed by the SDK) to the base G… address
+ * and, when it was muxed, the multiplexed form and its 64-bit id.
+ * @param {string} address
+ * @returns {{address: string}|{address: string, muxed: string, muxed_id: string}}
+ */
+function normalizeAccountAddress(address) {
+    if (!address) return {address}
+    if (address.startsWith('M')) {
+        try {
+            const raw = StrKey.decodeMed25519PublicKey(address)
+            return {
+                address: StrKey.encodeEd25519PublicKey(raw.subarray(0, 32)),
+                muxed: address,
+                muxed_id: Buffer.from(raw.subarray(32)).readBigUInt64BE(0).toString()
+            }
+        } catch (e) {
+            // malformed muxed address: keep as is
+        }
+    }
+    return {address}
+}
+
+/**
+ * Destination fields for operations with a (possibly muxed) account destination.
+ * @param {string} destination
+ * @returns {{destination: string, destination_muxed?: string, destination_muxed_id?: string}}
+ */
+function normalizeDestination(destination) {
+    const {address, muxed, muxed_id} = normalizeAccountAddress(destination)
+    const res = {destination: address}
+    if (muxed) {
+        res.destination_muxed = muxed
+        res.destination_muxed_id = muxed_id
+    }
+    return res
+}
+
+/**
+ * Fields for a possibly muxed account in a named role: `<name>` is always the base G… address,
+ * `<name>_muxed` / `<name>_muxed_id` are added when a muxed address was used.
+ * @param {string} name - field name, e.g. `from`
+ * @param {string} address
+ * @returns {Object}
+ */
+function accountFields(name, address) {
+    const {address: base, muxed, muxed_id} = normalizeAccountAddress(address)
+    const res = {[name]: base}
+    if (muxed) {
+        res[`${name}_muxed`] = muxed
+        res[`${name}_muxed_id`] = muxed_id
+    }
+    return res
 }
 
 function normalizeAsset(asset) {
@@ -121,7 +177,8 @@ function getInnerSuccess(resultXdr, operationIndex, opTypes) {
 function parseManageOfferResult(resultXdr, operationIndex) {
     const emptyResult = {trades: []}
     try {
-        const success = getInnerSuccess(resultXdr, operationIndex, ['manageSellOffer', 'manageBuyOffer'])
+        // create_passive_sell_offer has its own result arm with the same ManageSellOfferResult payload
+        const success = getInnerSuccess(resultXdr, operationIndex, ['manageSellOffer', 'manageBuyOffer', 'createPassiveSellOffer'])
         if (!success) return emptyResult
 
         const resultObj = {trades: (success.offersClaimed || []).map(normalizeClaimAtom).filter(Boolean)}
@@ -194,14 +251,14 @@ function normalizeRevokeSponsorship(operation) {
     const res = {type_i: 18, type: 'revoke_sponsorship'}
     switch (operation.type) {
         case 'revokeAccountSponsorship':
-            return {...res, revoke_type: 'account', account: operation.account}
+            return {...res, revoke_type: 'account', ...accountFields('account', operation.account)}
         case 'revokeTrustlineSponsorship':
             // plain {code, issuer} object here, not an Asset instance
-            return {...res, revoke_type: 'trustline', account: operation.account, asset: normalizeAsset(operation.asset)}
+            return {...res, revoke_type: 'trustline', ...accountFields('account', operation.account), asset: normalizeAsset(operation.asset)}
         case 'revokeOfferSponsorship':
-            return {...res, revoke_type: 'offer', account: operation.seller, offer_id: operation.offerId}
+            return {...res, revoke_type: 'offer', ...accountFields('account', operation.seller), offer_id: operation.offerId}
         case 'revokeDataSponsorship':
-            return {...res, revoke_type: 'data', account: operation.account, data_name: operation.name}
+            return {...res, revoke_type: 'data', ...accountFields('account', operation.account), data_name: operation.name}
         case 'revokeClaimableBalanceSponsorship':
             return {...res, revoke_type: 'claimable_balance', balance_id: operation.balanceId}
         case 'revokeLiquidityPoolSponsorship':
@@ -209,7 +266,7 @@ function normalizeRevokeSponsorship(operation) {
         case 'revokeSignerSponsorship': {
             // signer is {ed25519PublicKey} | {preAuthTx} | {sha256Hash} | {ed25519SignedPayload}
             const signer = operation.signer || {}
-            return {...res, revoke_type: 'signer', account: operation.account, signer_key: Object.values(signer)[0] || null}
+            return {...res, revoke_type: 'signer', ...accountFields('account', operation.account), signer_key: Object.values(signer)[0] || null}
         }
     }
     return null
@@ -263,7 +320,7 @@ function normalizeOperation(operation) {
             return {
                 type_i: 0,
                 type: 'create_account',
-                destination: operation.destination,
+                ...normalizeDestination(operation.destination),
                 asset: nativeAsset(),
                 amount: operation.startingBalance
             }
@@ -271,7 +328,7 @@ function normalizeOperation(operation) {
             return {
                 type_i: 1,
                 type: 'payment',
-                destination: operation.destination,
+                ...normalizeDestination(operation.destination),
                 asset: normalizeAsset(operation.asset),
                 amount: operation.amount
             }
@@ -280,6 +337,7 @@ function normalizeOperation(operation) {
             return {
                 type_i: 2,
                 type: 'path_payment_strict_receive',
+                ...normalizeDestination(operation.destination),
                 asset: normalizeAsset(operation.destAsset),
                 amount: operation.destAmount,
                 source_asset: normalizeAsset(operation.sendAsset),
@@ -290,6 +348,7 @@ function normalizeOperation(operation) {
             return {
                 type_i: 13,
                 type: 'path_payment_strict_send',
+                ...normalizeDestination(operation.destination),
                 asset: normalizeAsset(operation.destAsset),
                 amount: operation.sendAmount,
                 source_asset: normalizeAsset(operation.sendAsset),
@@ -361,7 +420,7 @@ function normalizeOperation(operation) {
             return {
                 type_i: 7,
                 type: 'allow_trust',
-                destination: operation.trustor,
+                ...normalizeDestination(operation.trustor),
                 asset: normalizeAsset({code: operation.assetCode, issuer: operation.trustor}),
                 authorize: operation.authorize
             }
@@ -369,7 +428,7 @@ function normalizeOperation(operation) {
             return {
                 type_i: 8,
                 type: 'account_merge',
-                destination: operation.destination
+                ...normalizeDestination(operation.destination)
             }
         case 'inflation':
             return {
@@ -429,7 +488,7 @@ function normalizeOperation(operation) {
             return {
                 type: 'clawback',
                 type_i: 19,
-                from: operation.from,
+                ...accountFields('from', operation.from),
                 asset: normalizeAsset(operation.asset),
                 amount: operation.amount
             }
@@ -443,7 +502,7 @@ function normalizeOperation(operation) {
             return {
                 type: 'set_trustline_flags',
                 type_i: 21,
-                trustor: operation.trustor,
+                ...accountFields('trustor', operation.trustor),
                 asset: normalizeAsset(operation.asset),
                 setFlags: operation.setFlags,
                 clearFlags: operation.clearFlags
@@ -525,7 +584,17 @@ function processOperation(operation, txDetails, applicationOrder) {
     // assign operation generic ID
     // see https://github.com/stellar/go/blob/6a367049e8f9ad52798f5c8f69df8b875fde4a1a/services/horizon/internal/toid/main.go
     normalized.id = new BigNumber(txDetails.paging_token).plus(new BigNumber(applicationOrder + 1)).toString()
-    normalized.account = normalized.account || operation.source || txDetails.source
+    // the operation source (or the tx source as a fallback) may be a muxed M… address — normalize to the base G… account
+    const source = normalizeAccountAddress(operation.source || txDetails.source_muxed || txDetails.source)
+    // `account` is the operation source; operations that name another account in `account` (revoke_sponsorship)
+    // keep it — and then the muxed form of the source does not belong to it
+    if (!normalized.account) {
+        normalized.account = source.address
+        if (source.muxed) {
+            normalized.account_muxed = source.muxed
+            normalized.account_muxed_id = source.muxed_id
+        }
+    }
     normalized.application_order = applicationOrder
     normalized.transaction_details = txDetails
 
@@ -542,7 +611,8 @@ function processOperation(operation, txDetails, applicationOrder) {
     }
 
     // Parse claimed trades and created_offer_id from result_xdr for manage offer operations
-    if ((normalized.type === 'manage_sell_offer' || normalized.type === 'manage_buy_offer') && txDetails.result_xdr) {
+    // (a passive offer has the same result type: its fills by other accounts' transactions show up here)
+    if ((normalized.type === 'manage_sell_offer' || normalized.type === 'manage_buy_offer' || normalized.type === 'create_passive_sell_offer') && txDetails.result_xdr) {
         const offerResult = parseManageOfferResult(txDetails.result_xdr, applicationOrder)
         if (offerResult.trades?.length) {
             normalized.trades = offerResult.trades
@@ -598,17 +668,20 @@ function parseTransaction(transaction) {
             xdrTx = xdrTx.innerTransaction
         }
     } catch (e) {
-        console.error(e)
-        console.error('Tx envelope: ' + transaction.envelope_xdr)
+        // diagnosable skip: the caller counts it and exposes it in the status; the envelope stays at debug level
+        logger.warn(`Failed to parse transaction ${transaction?.hash}: ${e.message} (ledger ${transaction?.ledger ?? '?'})`)
+        logger.debug(`Tx envelope: ${transaction?.envelope_xdr}`)
         return null
     }
 
+    const txSource = normalizeAccountAddress(xdrTx.source)
     const txDetails = {
         hash: transaction.hash,
         fee: xdrTx.fee,
         fee_charged:transaction.fee_charged,
         max_fee:transaction.max_fee,
-        source: xdrTx.source,
+        source: txSource.address,
+        ...(txSource.muxed ? {source_muxed: txSource.muxed, source_muxed_id: txSource.muxed_id} : {}),
         paging_token: transaction.paging_token,
         source_account_sequence: transaction.source_account_sequence,
         created_at: transaction.created_at,

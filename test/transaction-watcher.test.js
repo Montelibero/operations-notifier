@@ -241,6 +241,13 @@ describe('TransactionWatcher', function () {
         expect(horizonPool.listenerCount('switch')).to.equal(before)
     })
 
+    it('counts transactions skipped because of unparseable envelopes', async function () {
+        expect(watcher.getStatus().skippedTransactions).to.equal(0)
+        await watcher.processTransaction({hash: 'badbeef', ledger: 42, envelope_xdr: 'AAAA', paging_token: '1'})
+        expect(watcher.getStatus().skippedTransactions).to.equal(1)
+        expect(watcher.getStatus().lastSkippedTransaction).to.include({hash: 'badbeef', ledger: 42})
+    })
+
     it('reports unhealthy when watcher has no recent successful activity', function () {
         config.healthStartupGraceSeconds = 0
         config.healthMaxNoSuccessSeconds = 10

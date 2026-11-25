@@ -1,3 +1,26 @@
+0.12.0 / 2026-11-26
+==================
+
+* Matching rules v2 for new subscriptions (`filter_version`, default 2; existing subscriptions
+  keep v1): account subscriptions now also match the recipient of `path_payment_*`, the `from`
+  of `clawback`, the `trustor` of `set_trustline_flags`, the sponsored account of
+  `begin_sponsoring_future_reserves`, claimants of `create_claimable_balance`; asset
+  subscriptions also match the intermediate `path` assets and the assets of `trades`; the
+  `memo` filter compares the transaction memo value for v2 subscriptions, hash/return
+  memos may be given as hex (v1 subscriptions with a memo never matched and stay that way).
+* Order book fills of `create_passive_sell_offer` are decoded into `trades` (the account's
+  passive offer filled by another transaction).
+* Muxed addresses follow the Horizon convention: `destination`/`account`/`from` are always the
+  base `G…` account, with `<field>_muxed`/`<field>_muxed_id` when a muxed address was used
+  (including the muxed transaction source `source_muxed` inherited by operations).
+  `path_payment_*` operations now carry `destination`.
+* Fix: subscription deduplication never worked for authenticated users (the request hash had no owner,
+  the stored one had) — the owner is now taken from auth for request params; subscriptions with
+  different `filter_version` are different subscriptions.
+* Transactions that cannot be parsed are no longer skipped silently: a warning with the
+  transaction hash, a counter and the last skipped transaction in `GET /api/status`
+  (`stream.skippedTransactions`, `stream.lastSkippedTransaction`).
+
 0.11.0 / 2026-11-26
 ==================
 

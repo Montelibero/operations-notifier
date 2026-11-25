@@ -16,11 +16,23 @@ function arraysEqual(a, b) {
     return sortedA.every((v, i) => v === sortedB[i])
 }
 
-const DEDUP_FIELDS = ['pubkey', 'reaction_url', 'account', 'contract', 'memo', 'asset_type', 'asset_code', 'asset_issuer']
+const DEDUP_FIELDS = ['pubkey', 'reaction_url', 'account', 'contract', 'memo', 'asset_type', 'asset_code', 'asset_issuer'],
+    {CURRENT_FILTER_VERSION} = require('../util/subscription-match-helper')
 
-function subscriptionHash(s) {
+/**
+ * Identity of a subscription for deduplication: owner + filters + filter version.
+ * `s` is either stored subscription or raw request params (no `id`/`status`, no owner — then `user` is used).
+ * @param {Object} s - subscription or request params
+ * @param {Object|null} [user] - owner of the request params
+ */
+function subscriptionHash(s, user = null) {
     const opTypes = s.operation_types ? [...s.operation_types].sort().join(',') : ''
-    return JSON.stringify(DEDUP_FIELDS.map(f => s[f] || '').concat(opTypes))
+    const isRequestParams = s.id === undefined && s.status === undefined
+    // request params without the field mean the current version, stored subscriptions without it mean v1
+    const filterVersion = s.filter_version ?? (isRequestParams ? CURRENT_FILTER_VERSION : 1)
+    const pubkey = isRequestParams ? ((user && user.pubkey) || '') : (s.pubkey || '')
+    const values = DEDUP_FIELDS.map(f => f === 'pubkey' ? pubkey : (s[f] || ''))
+    return JSON.stringify(values.concat(opTypes, filterVersion))
 }
 
 /**
@@ -79,7 +91,7 @@ class Observer {
                 if (config.authorization && maxPerUser && this.getUserActiveSubscriptionsCount(user) >= maxPerUser) {
                     return Promise.reject(errors.forbidden('Max active subscriptions exceeded.'))
                 }
-                const hash = subscriptionHash(subscriptionParams)
+                const hash = subscriptionHash(subscriptionParams, user)
                 const dedupSet = this._buildDedupSet()
                 if (dedupSet.has(hash)) {
                     return this.subscriptions.find(s => subscriptionHash(s) === hash)
@@ -121,7 +133,7 @@ class Observer {
 
                 for (let i = 0; i < paramsArray.length; i++) {
                     const params = paramsArray[i]
-                    const hash = subscriptionHash(params)
+                    const hash = subscriptionHash(params, user)
                     if (dedupSet.has(hash)) {
                         // existing subscription or within-batch duplicate
                         const existing = this.subscriptions.find(s => subscriptionHash(s) === hash)

@@ -1,6 +1,6 @@
 const expect = require('chai').expect;
 const sinon = require('sinon');
-const { TransactionBuilder, Operation, Keypair, Account, Networks, Asset, Claimant, Memo, Address, nativeToScVal } = require('@stellar/stellar-sdk');
+const { TransactionBuilder, Operation, Keypair, Account, Networks, Asset, Claimant, Memo, Address, StrKey, nativeToScVal } = require('@stellar/stellar-sdk');
 const { parseTransaction, parsePathPaymentTrades, parseManageOfferResult } = require('../logic/stream-processor');
 
 describe('stream-processor', function () {
@@ -378,6 +378,152 @@ describe('stream-processor', function () {
         // byte signers are encoded as hex strings (SDK returns raw Uint8Array here)
         expect(hashSigner.signer_key).to.equal('02'.repeat(32));
         expect(preAuthSigner.signer_key).to.equal('03'.repeat(32));
+    });
+
+    it('should expose the path payment destination and muxed addresses in the Horizon convention', function () {
+        const src = Keypair.random();
+        const G = src.publicKey();
+        const M = StrKey.encodeMed25519PublicKey(Buffer.concat([src.rawPublicKey(), Buffer.from('00000000075bcd15', 'hex')])); // id 123456789
+        const build = operation => new TransactionBuilder(new Account(G, '1'), {fee: '100', networkPassphrase: Networks.PUBLIC})
+            .addOperation(operation).setTimeout(0).build();
+        const parse = tx => parseTransaction({
+            hash: 'deadbeef', paging_token: '1', successful: true, source_account: G, source_account_sequence: '1',
+            created_at: '2026-11-26T00:00:00Z', envelope_xdr: tx.toXDR(), result_xdr: '', memo_type: 'none'
+        }).operations[0];
+        const asset = new Asset('USD', G);
+        const usd = {asset_type: 1, asset_code: 'USD', asset_issuer: G};
+        const pathPayment = parse(build(Operation.pathPaymentStrictReceive({sendAsset: Asset.native(), sendMax: '10', destination: M, destAsset: asset, destAmount: '1', path: [asset]})));
+        expect(pathPayment.type).to.equal('path_payment_strict_receive');
+        expect(pathPayment.destination).to.equal(G);
+        expect(pathPayment.destination_muxed).to.equal(M);
+        expect(pathPayment.destination_muxed_id).to.equal('123456789');
+        expect(pathPayment.path).to.deep.equal([usd]);
+
+        const payment = parse(build(Operation.payment({destination: M, asset: Asset.native(), amount: '1'})));
+        expect(payment.destination).to.equal(G);
+        expect(payment.destination_muxed).to.equal(M);
+        const plain = parse(build(Operation.payment({destination: G, asset: Asset.native(), amount: '1'})));
+        expect(plain.destination).to.equal(G);
+        expect(plain).to.not.have.property('destination_muxed');
+    });
+
+    it('should normalize a muxed operation source account', function () {
+        const src = Keypair.random();
+        const G = src.publicKey();
+        const M = StrKey.encodeMed25519PublicKey(Buffer.concat([src.rawPublicKey(), Buffer.from('0000000000000042', 'hex')])); // id 66
+        const tx = new TransactionBuilder(new Account(G, '1'), {fee: '100', networkPassphrase: Networks.PUBLIC})
+            .addOperation(Operation.payment({destination: G, asset: Asset.native(), amount: '1', source: M}))
+            .setTimeout(0).build();
+        const op = parseTransaction({
+            hash: 'deadbeef', paging_token: '1', successful: true, source_account: G, source_account_sequence: '1',
+            created_at: '2026-11-26T00:00:00Z', envelope_xdr: tx.toXDR(), result_xdr: '', memo_type: 'none'
+        }).operations[0];
+        expect(op.account).to.equal(G);
+        expect(op.account_muxed).to.equal(M);
+        expect(op.account_muxed_id).to.equal('66');
+    });
+
+    it('should attach trades to a passive offer filled by another account', function () {
+        const src = Keypair.random();
+        const G = src.publicKey();
+        // real create_passive_sell_offer result (its own result arm, type 4): one order book fill + manageOfferDeleted effect
+        const fillResultXdr = 'AAAAAAAAAGQAAAAAAAAAAQAAAAAAAAAEAAAAAAAAAAEAAAABAAAAAHB9s3EkGbtByca8XDot1sl8a0WwT1z/k59NhxdaQgH8AAAAAAAAAGMAAAAAAAAAAABMS0AAAAABVVNEAAAAAABwfbNxJBm7QcnGvFw6LdbJfGtFsE9c/5OfTYcXWkIB/AAAAAAAJiWgAAAAAgAAAAA=';
+        const tx = new TransactionBuilder(new Account(G, '1'), { fee: '100', networkPassphrase: Networks.PUBLIC })
+            .addOperation(Operation.createPassiveSellOffer({ selling: Asset.native(), buying: new Asset('USD', G), amount: '1', price: '1' }))
+            .setTimeout(0)
+            .build();
+        const [op] = parseTransaction({
+            hash: 'deadbeef', paging_token: '1', successful: true, source_account: G, source_account_sequence: '1',
+            created_at: '2026-11-26T00:00:00Z', envelope_xdr: tx.toXDR(), result_xdr: fillResultXdr, memo_type: 'none'
+        }).operations;
+        expect(op.type).to.equal('create_passive_sell_offer');
+        expect(op.trades).to.have.length(1);
+        expect(op.trades[0].seller_id).to.equal('GBYH3M3REQM3WQOJY26FYORN23EXY22FWBHVZ74TT5GYOF22IIA7YSOX');
+        expect(op).to.not.have.property('created_offer_id');
+    });
+
+    it('should keep the muxed transaction source for operations without their own source', function () {
+        const sdk = require('@stellar/stellar-sdk');
+        const src = Keypair.random();
+        const G = src.publicKey();
+        const M = StrKey.encodeMed25519PublicKey(Buffer.concat([src.rawPublicKey(), Buffer.from('000000000000002a', 'hex')])); // id 42
+        const plain = new TransactionBuilder(new Account(G, '1'), { fee: '100', networkPassphrase: Networks.PUBLIC })
+            .addOperation(Operation.payment({ destination: G, asset: Asset.native(), amount: '1' }))
+            .setTimeout(0)
+            .build();
+        // the transaction source is a MuxedAccount in XDR: replace it with the muxed form of the same key (wire level)
+        const wire = plain.toEnvelope().toXdrObject();
+        wire.v1.tx.sourceAccount = {type: 256, med25519: {id: 42n, ed25519: src.rawPublicKey()}};
+        const parsed = parseTransaction({
+            hash: 'deadbeef', paging_token: '1', successful: true, source_account: G, source_account_sequence: '1',
+            created_at: '2026-11-26T00:00:00Z', envelope_xdr: sdk.xdr.TransactionEnvelope.fromXdrObject(wire).toXDR('base64'), result_xdr: '', memo_type: 'none'
+        });
+        expect(parsed.details.source).to.equal(G);
+        expect(parsed.details.source_muxed).to.equal(M);
+        expect(parsed.details.source_muxed_id).to.equal('42');
+        const [op] = parsed.operations; // no operation source → inherits the tx source
+        expect(op.account).to.equal(G);
+        expect(op.account_muxed).to.equal(M);
+        expect(op.account_muxed_id).to.equal('42');
+    });
+
+    it('should not attach the muxed transaction source to revoke_sponsorship operations (account is the target)', function () {
+        const sdk = require('@stellar/stellar-sdk');
+        const src = Keypair.random();
+        const G = src.publicKey();
+        const target = Keypair.random().publicKey();
+        const plain = new TransactionBuilder(new Account(G, '1'), { fee: '100', networkPassphrase: Networks.PUBLIC })
+            .addOperation(Operation.revokeAccountSponsorship({ account: target }))
+            .setTimeout(0)
+            .build();
+        const wire = plain.toEnvelope().toXdrObject();
+        wire.v1.tx.sourceAccount = {type: 256, med25519: {id: 5n, ed25519: src.rawPublicKey()}};
+        const [op] = parseTransaction({
+            hash: 'deadbeef', paging_token: '1', successful: true, source_account: G, source_account_sequence: '1',
+            created_at: '2026-11-26T00:00:00Z', envelope_xdr: sdk.xdr.TransactionEnvelope.fromXdrObject(wire).toXDR('base64'), result_xdr: '', memo_type: 'none'
+        }).operations;
+        expect(op.account).to.equal(target);
+        expect(op).to.not.have.property('account_muxed');
+        expect(op).to.not.have.property('account_muxed_id');
+    });
+
+    it('should normalize the muxed account of a clawback', function () {
+        const sdk = require('@stellar/stellar-sdk');
+        const src = Keypair.random();
+        const G = src.publicKey();
+        const M = StrKey.encodeMed25519PublicKey(Buffer.concat([src.rawPublicKey(), Buffer.from('0000000000000007', 'hex')])); // id 7
+        const asset = new Asset('USD', G);
+        const plain = new TransactionBuilder(new Account(G, '1'), { fee: '100', networkPassphrase: Networks.PUBLIC })
+            .addOperation(Operation.clawback({ from: G, asset, amount: '1' }))
+            .addOperation(Operation.setTrustLineFlags({ trustor: G, asset, flags: { authorized: true } }))
+            .setTimeout(0)
+            .build();
+        // the builders accept G… only; patch the muxed account (MuxedAccount in XDR) into the clawback operation
+        // (set_trustline_flags.trustor and begin_sponsoring_future_reserves.sponsoredId are AccountIDs, never muxed)
+        const muxed = {type: 256, med25519: {id: 7n, ed25519: src.rawPublicKey()}};
+        const wire = plain.toEnvelope().toXdrObject();
+        wire.v1.tx.operations[0].body.clawbackOp.from = muxed;
+        const [clawback] = parseTransaction({
+            hash: 'deadbeef', paging_token: '1', successful: true, source_account: G, source_account_sequence: '1',
+            created_at: '2026-11-26T00:00:00Z', envelope_xdr: sdk.xdr.TransactionEnvelope.fromXdrObject(wire).toXDR('base64'), result_xdr: '', memo_type: 'none'
+        }).operations;
+        expect(clawback.from).to.equal(G);
+        expect(clawback.from_muxed).to.equal(M);
+        expect(clawback.from_muxed_id).to.equal('7');
+    });
+
+    it('logs a diagnosable warning with the tx hash instead of dumping the envelope on parse failure', function () {
+        const logger = require('../util/logger');
+        const warn = sinon.stub(logger, 'warn');
+        const debug = sinon.stub(logger, 'debug');
+        const error = sinon.stub(console, 'error');
+        const parsed = parseTransaction({hash: 'deadbeef', ledger: 65664138, paging_token: '1', envelope_xdr: 'AAAA', result_xdr: ''});
+        expect(parsed).to.equal(null);
+        expect(warn.calledOnce).to.equal(true);
+        expect(warn.firstCall.args[0]).to.match(/deadbeef/);
+        expect(warn.firstCall.args[0]).to.match(/65664138/);
+        expect(debug.calledOnce).to.equal(true); // the envelope stays at debug level
+        expect(error.called).to.equal(false);
     });
 
     it('should parse extendFootprintTTL', function () {

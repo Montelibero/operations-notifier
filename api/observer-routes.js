@@ -113,6 +113,8 @@ module.exports = function (app) {
                         lastRecoveryAttemptAt: streamStatus.lastRecoveryAttemptAt,
                         lastErrorAt: streamStatus.lastErrorAt,
                         lastErrorMessage: streamStatus.lastErrorMessage,
+                        skippedTransactions: streamStatus.skippedTransactions ?? 0,
+                        lastSkippedTransaction: streamStatus.lastSkippedTransaction ?? null,
                         horizon: streamStatus.horizon ?? null,
                         sorobanRpc: streamStatus.sorobanRpc ?? null,
                         healthy: streamStatus.healthy

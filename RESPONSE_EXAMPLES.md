@@ -52,12 +52,17 @@
 
 ## 1 | payment
 
+Поля `destination_muxed` / `destination_muxed_id` появляются только при платеже на
+muxed-адрес (`M…`); `destination` всегда содержит базовый `G…`-аккаунт.
+
 ```json
 {
   "operation": {
     "type_i": 1,
     "type": "payment",
     "destination": "GBEPZKYCZBZV2AM4C4A6NFAC2RJKVHUZ6HRQ3JFMZGLK442LHBMK2SG2",
+    "destination_muxed": "MBEPZKYCZBZV2AM4C4A6NFAC2RJKVHUZ6HRQ3JFMZGLK442LHBMK2SAAAAAAAAAAAHF5Y",
+    "destination_muxed_id": "123456789",
     "asset": {
       "asset_type": 2,
       "asset_code": "STARDUST",

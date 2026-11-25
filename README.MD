@@ -416,6 +416,8 @@ Admin requests can use `Authorization: <ADMIN_AUTHENTICATION_TOKEN>` in any mode
   - `stream` — stream status (last ledger, last tx hash/paging token, queue length, reconnect delay).
   - `stream.horizon`, `stream.sorobanRpc` — pool status: active server and per-server
     counters/state (see [Server pools and failover](#server-pools-and-failover)).
+  - `stream.skippedTransactions`, `stream.lastSkippedTransaction` — transactions that could
+    not be parsed (unknown XDR, malformed envelope) and were skipped: count and the last one.
   - `notifier` — notifier status (in-flight notifications).
 - `GET /api/status/pool-check` — admin only: on-demand check of every Horizon and
   Soroban RPC server (latest ledger, lag, response time, error).
@@ -554,7 +556,36 @@ issuer to track operations involving XLM)
 - **operation_types** [*Array\<Number\>*] (optional) - operation types to track (currently 0..26),
 array or comma-separated string. You can find numbers at
 https://developers.stellar.org/docs/data/analytics/hubble/data-catalog/data-dictionary/bronze/history-operations
+- **filter_version** [*number*] (optional) - version of the matching rules, `2` for new
+subscriptions by default, `1` keeps the original rules (see [Matching rules](#matching-rules))
 - **expires** [*date/epoch*] (optional) - expiration date for subscription
+
+Note: several filters in one subscription are combined with AND (all of them must hold).
+
+<a id="matching-rules"></a>
+
+#### Matching rules
+
+Subscriptions created before v0.12.0 (no `filter_version`) keep the original
+rules (`1`); new subscriptions get `2` by default:
+
+| Rule | v1 | v2 |
+|---|---|---|
+| **account** matches the operation source account (or the transaction source) | ✓ | ✓ |
+| … the destination of `create_account`, `payment`, `account_merge` | ✓ | ✓ |
+| … the destination of `path_payment_*` (always the base `G…` account, even if paid to an `M…` address) | – | ✓ |
+| … the `from` of `clawback`, `trustor` of `set_trustline_flags`, `sponsoredId` of `begin_sponsoring_future_reserves`, claimants of `create_claimable_balance` | – | ✓ |
+| … the `seller_id` of an order book fill in `trades` (the account's offer was filled by someone else's transaction, including passive offers) | ✓ | ✓ |
+| … the value of a `manage_data` entry that equals the account | ✓ | ✓ |
+| **asset** matches `asset` or `source_asset` of the operation | ✓ | ✓ |
+| … the intermediate assets in `path` and the `asset_sold`/`asset_bought` of `trades` | – | ✓ |
+| **memo** matches the transaction memo value (hash/return memos may be given as hex) | never matched (such subscriptions need to be recreated as v2) | ✓ |
+| **contract**, **operation_types** | ✓ | ✓ |
+
+Addresses in the webhook payload follow the Horizon convention: `destination`,
+`account`, `from` (clawback) are always the base `G…` account; muxed addresses also
+carry `<field>_muxed` (`M…`) and `<field>_muxed_id` (`destination_muxed`,
+`account_muxed`, `from_muxed`, `source_muxed` of the transaction).
 
 Note: if authentication is enabled, include a `nonce` param in the request body
 that is greater than the previous nonce used for this public key.

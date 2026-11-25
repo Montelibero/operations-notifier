@@ -2,6 +2,7 @@ const {StrKey} = require('@stellar/stellar-sdk'),
     BigNumber = require('bignumber.js'),
     {parseAsset} = require('../util/asset-helper'),
     {getOperationTypeMembers} = require('../util/operation-types'),
+    SubscriptionModel = require('../models/subscription-model'),
     errors = require('../util/errors'),
     logger = require('../util/logger')
 
@@ -219,6 +220,15 @@ class Storage {
         }
 
         if (!isValid) return {error: errors.badRequest('No operation filter params were provided.')}
+
+        // filter rules version: new subscriptions get the current one, 1 keeps the original rules
+        const rawVersion = subscriptionParams.filter_version
+        const requestedVersion = rawVersion === undefined || rawVersion === null || rawVersion === ''
+            ? SubscriptionModel.CURRENT_FILTER_VERSION
+            : Number(rawVersion)
+        if (typeof rawVersion === 'boolean' || !Number.isInteger(requestedVersion) || requestedVersion < 1 || requestedVersion > SubscriptionModel.CURRENT_FILTER_VERSION)
+            return {error: errors.validationError('filter_version', `Unsupported filter version. Valid values: 1..${SubscriptionModel.CURRENT_FILTER_VERSION}.`)}
+        subscription.filter_version = requestedVersion
 
         if (subscriptionParams.expires) {
             let rawDate = subscriptionParams.expires

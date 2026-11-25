@@ -229,7 +229,13 @@ class TransactionWatcher {
                 notifications = [],
                 relevantSubscriptions = new Set()
 
-            if (!tx) { // Failed to parse transaction
+            if (!tx) { // Failed to parse transaction (unknown XDR or malformed envelope): count it, never fail silently
+                this.skippedTransactions = (this.skippedTransactions || 0) + 1
+                this.lastSkipped = {
+                    hash: rawTx && rawTx.hash,
+                    ledger: rawTx && rawTx.ledger,
+                    at: new Date().toISOString()
+                }
                 return resolve()
             }
 
@@ -850,6 +856,8 @@ class TransactionWatcher {
             lastRecoveryAttemptAt: this.lastRecoveryAttemptAt,
             lastErrorAt: this.lastErrorAt,
             lastErrorMessage: this.lastErrorMessage,
+            skippedTransactions: this.skippedTransactions || 0,
+            lastSkippedTransaction: this.lastSkipped || null,
             horizon: horizonPool.getStatus(),
             sorobanRpc: sorobanRpc.client ? sorobanRpc.client.getStatus() : null,
             healthy: this.getHealth().healthy
