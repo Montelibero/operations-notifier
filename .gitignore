@@ -39,3 +39,6 @@ jspm_packages/
 
 # External reviewer (agy) reports
 /docs/drafts/
+
+# Claude Code local settings
+/.claude/
